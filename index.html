@@ -670,11 +670,47 @@ function EnkipoolsEstimator() {
             React.createElement("div", null,
                 React.createElement("div", { style: { fontSize: 22, fontWeight: 900, letterSpacing: "0.02em" } }, "enkipools"),
                 React.createElement("div", { style: { fontSize: 11, opacity: 0.75, letterSpacing: "0.12em", textTransform: "uppercase" } }, "Estimation Tool")),
-            React.createElement("div", { style: { marginLeft: "auto", display: "flex", gap: 8 } }, [["estimator", "Estimator"], ["proposal", "Quotation"], ["result", "Summary"]].map(([v, label]) => (React.createElement("button", { key: v, onClick: () => v !== "estimator" && result && setView(v), style: {
-                    padding: "6px 16px", borderRadius: 20, border: "none", cursor: result || v === "estimator" ? "pointer" : "default",
-                    background: view === v ? "rgba(255,255,255,0.25)" : "transparent",
-                    color: "white", fontSize: 12, fontWeight: 600, opacity: (v !== "estimator" && !result) ? 0.4 : 1,
-                } }, label))))),
+            React.createElement("div", { style: { marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" } },
+                [["estimator", "Estimator"], ["proposal", "Quotation"], ["result", "Summary"]].map(([v, label]) => (React.createElement("button", { key: v, onClick: () => v !== "estimator" && result && setView(v), style: {
+                        padding: "6px 16px", borderRadius: 20, border: "none", cursor: result || v === "estimator" ? "pointer" : "default",
+                        background: view === v ? "rgba(255,255,255,0.25)" : "transparent",
+                        color: "white", fontSize: 12, fontWeight: 600, opacity: (v !== "estimator" && !result) ? 0.4 : 1,
+                    } }, label))),
+                React.createElement("div", { style: { width: 1, height: 24, background: "rgba(255,255,255,0.3)", margin: "0 4px" } }),
+                React.createElement("button", { onClick: () => {
+                        const filename = (form.clientFirstName || "estimate") + "-" + (form.clientSurname || "") + "-" + new Date().toISOString().slice(0, 10) + ".json";
+                        const blob = new Blob([JSON.stringify({ form, savedAt: new Date().toISOString() }, null, 2)], { type: "application/json" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = filename;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                    }, style: { padding: "6px 14px", borderRadius: 20, border: "1px solid rgba(255,255,255,0.4)", cursor: "pointer", background: "transparent", color: "white", fontSize: 12, fontWeight: 600 } }, "\uD83D\uDCBE Save"),
+                React.createElement("label", { style: { padding: "6px 14px", borderRadius: 20, border: "1px solid rgba(255,255,255,0.4)", cursor: "pointer", background: "transparent", color: "white", fontSize: 12, fontWeight: 600 } },
+                    "\uD83D\uDCC2 Load",
+                    React.createElement("input", { type: "file", accept: ".json", style: { display: "none" }, onChange: e => {
+                            const file = e.target.files[0];
+                            if (!file)
+                                return;
+                            const reader = new FileReader();
+                            reader.onload = ev => {
+                                try {
+                                    const data = JSON.parse(ev.target.result);
+                                    if (data.form) {
+                                        setForm(f => ({ ...f, ...data.form }));
+                                        setResult(null);
+                                        setView("estimator");
+                                        alert("Estimate loaded successfully!");
+                                    }
+                                }
+                                catch {
+                                    alert("Invalid file — please select a valid estimate JSON file.");
+                                }
+                            };
+                            reader.readAsText(file);
+                            e.target.value = "";
+                        } })))),
         view === "estimator" && (React.createElement("div", { style: cardStyle },
             React.createElement("div", { style: { fontSize: 17, fontWeight: 800, color: "#0d2d6b", marginBottom: 20 } }, "New Pool Estimation"),
             React.createElement(Section, { title: "Client & Proposal" },
