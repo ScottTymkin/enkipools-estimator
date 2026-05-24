@@ -386,13 +386,14 @@ function EnkipoolsEstimator() {
         hasAutomation: false, automationType: "intelliCenter",
         autofillerType: "paralevel",
         lightCount: "", lightType: "WN9",
-        infinityEdge: false,
+        infinityEdge: false, infinityEdgeGrating: false, infinityEdgeDetail: "reverseEdge", infinityEdgeInteriorFinish: "grating",
+        infinityEdgeLength: "", balanceTankLength: "", balanceTankWidth: "", balanceTankDepth: "", infinityEdgeWallHeight: "",
         // Pool price variables (shown as separate lines on proposal)
         hasFormwork: false, formworkType: "lightDuty", formworkSqm: "",
         hasMembrane: false,
         extraBobcatDays: "", // extra bobcat days beyond excavation ($1,500/day)
         extraTruckDays: "", // additional truck days ($1,500/day)
-        foundationsPS: "", // Foundations provisional sum — entered manually
+        foundationsPS: "", foundationsType: "underPoolPiers",
         pipeRunDistance: "10", // total pipe run in lineal meters — cost applies above 10m
         soilOnSite: false, // soil left on site — negative credit based on loads saved
         soilLoadsOnSite: "", // number of truck loads NOT removed (credit)
@@ -538,7 +539,13 @@ function EnkipoolsEstimator() {
             : form.projectLocation === "country" ? 1.12
                 : form.projectLocation === "peninsulaBlaSho" ? 1.09
                     : 1.0;
-        const baseBeforeUplift = Math.round((Math.round(sqmNum * PP.poolPerSqm) - aquaNeonDiscount + tile25mmSurcharge + swimoutCost + fullWidthStepsCostPool + soilNotRemovedCredit + soilClassCost + trafficMgmtCost + formworkPoolAddition + tilePCSurcharge + pumpUpgradeCost + pipeRunCost - filterDiscount
+        // Trucks: 2 included. 0 trucks = −$2,500, 1 truck = −$1,750, 3 trucks = +$1,750 — all in pool base
+        const truckQty = form.truckQty !== undefined && form.truckQty !== "" ? parseInt(form.truckQty) : 2;
+        const truckAdjustment = truckQty === 0 ? -2500
+            : truckQty === 1 ? -1750
+                : truckQty === 3 ? 1750
+                    : 0;
+        const baseBeforeUplift = Math.round((Math.round(sqmNum * PP.poolPerSqm) - aquaNeonDiscount + tile25mmSurcharge + swimoutCost + fullWidthStepsCostPool + soilNotRemovedCredit + soilClassCost + trafficMgmtCost + formworkPoolAddition + tilePCSurcharge + pumpUpgradeCost + pipeRunCost - filterDiscount + truckAdjustment
             - (form.engineeringPlans === "byOthers" ? PP.poolVariables.engineeringByOthersCredit : 0)) * accessMultiplier * shapeMultiplier * locationMultiplier);
         const poolBase = Math.round(baseBeforeUplift * (1 + marginUpliftPct));
         // In-floor — tiered exact price + full width steps surcharge
@@ -554,9 +561,7 @@ function EnkipoolsEstimator() {
             ? Math.PI * poolDiam
             : 2 * (parseFloat(form.poolLength || 9) + parseFloat(form.poolWidth || 4))) * parseFloat(form.depthDeep || 1.8) + sqmNum;
         const membraneCost = form.hasMembrane ? Math.round(perimSqm * PP.poolVariables.membranePerSqm) : 0;
-        // Trucks: 2 trucks for 1 day included in pool price. Extra truck = $1,750
-        const truckQty = parseInt(form.truckQty) || 2;
-        const extraTruckCost = form.soilRemoved === "yes" && truckQty !== 2 ? 1750 : 0;
+        const extraTruckCost = 0; // no longer a separate line — folded into pool base
         const trackedLoaderCost = form.trackedLoader ? Math.round(parseFloat(form.trackedLoaderDays || 1) * 1650) : 0;
         // Tipping: 8 loads included. Each load above 8 = $300
         const tippingQty = parseInt(form.tippingLoads) || 8;
@@ -586,6 +591,7 @@ function EnkipoolsEstimator() {
             + (tilePCSurcharge > 0 ? " — Tile P.C. upgrade (+$" + tilePCSurcharge.toLocaleString("en-AU") + ")" : "")
             + (filterDiscount > 0 ? " — Pentair 25in filter (-$" + filterDiscount.toLocaleString("en-AU") + ")" : "")
             + (pumpUpgradeCost > 0 ? " — " + (form.pumpModel === "intelliflo" ? "Intelliflo VS" : "EnviroMax VS") + " upgrade (+$" + pumpUpgradeCost.toLocaleString("en-AU") + ")" : "")
+            + (truckAdjustment !== 0 ? " — " + truckQty + " truck" + (truckQty !== 1 ? "s" : "") + " (" + (truckAdjustment > 0 ? "+" : "") + "$" + truckAdjustment.toLocaleString("en-AU") + ")" : "")
             + (pipeRunCost > 0 ? " — Pipe Run " + pipeRunOverage + "m over 10m (+$" + pipeRunCost.toLocaleString("en-AU") + ")" : "")
             + (locationMultiplier > 1 ? " — " + (form.projectLocation === "peninsulaPorSor" ? "Peninsula Portsea/Sorrento" : form.projectLocation === "peninsulaBlaSho" ? "Peninsula Blairgowrie/Shoreham" : "Country") + " (+" + ((locationMultiplier - 1) * 100).toFixed(0) + "%)" : "");
         const lines = [
@@ -593,11 +599,43 @@ function EnkipoolsEstimator() {
             { label: "Swimming Pool", sub: poolSubLabel, value: poolBasePrice },
             membraneCost > 0 && { label: "Waterproof Membrane", sub: `${perimSqm.toFixed(0)} Sq.m @ $${PP.poolVariables.membranePerSqm}/Sq.m`, value: membraneCost },
             extraBobcatCost > 0 && { label: "Bobcat", sub: `${form.bobcatDays} day${parseFloat(form.bobcatDays) !== 1 ? "s" : ""} @ $${PP.poolVariables.bobcatPerDay.toLocaleString("en-AU")}/day`, value: extraBobcatCost },
-            extraTruckCost > 0 && { label: "Additional Truck", sub: `${truckQty === 1 ? "1 Truck (1 less than included 2)" : "3 Trucks (1 additional)"} @ $1,750`, value: extraTruckCost },
             trackedLoaderCost > 0 && { label: "Tracked Loader (Posi or Wheeled Dumper)", sub: `${form.trackedLoaderDays} day${parseFloat(form.trackedLoaderDays) !== 1 ? "s" : ""} @ $1,650/day`, value: trackedLoaderCost },
             extraTippingCost > 0 && { label: "Additional Tipping", sub: `${tippingQty - 8} loads above included 8 @ $300/load`, value: extraTippingCost },
             soilCredit < 0 && { label: "Soil Left on Site", sub: `${soilLoads} load${soilLoads !== 1 ? "s" : ""} remaining on site — credit`, value: soilCredit, credit: true },
             roadClosureCost > 0 && { label: "Road Closure", sub: "PROVISIONAL SUM", value: roadClosureCost },
+            form.infinityEdge && { label: "Infinity Edge & Balance Tank", sub: (() => {
+                    const ieDetail = { reverseEdge: "Reverse Edge (Towards pool)", forwardEdge: "Forward Edge (Away from pool)", curvedEdge: "Curved Edge (Curved away from pool)" }[form.infinityEdgeDetail] || "";
+                    const ieLen = parseFloat(form.infinityEdgeLength || form.poolLength) || 0;
+                    const btL = parseFloat(form.balanceTankLength || form.poolLength) || 0;
+                    const btW = parseFloat(form.balanceTankWidth || "0.8") || 0.8;
+                    const btD = parseFloat(form.balanceTankDepth || "0.8") || 0.8;
+                    const wallH = parseFloat(form.infinityEdgeWallHeight || "1.2") || 1.2;
+                    const wallSteps = Math.round((wallH - 1.2) / 0.1);
+                    const wallMultiplier = wallSteps > 0 ? Math.pow(1.05, wallSteps) : 1;
+                    const baseIERate = Math.round(4500 * wallMultiplier);
+                    const curvedSurcharge = form.infinityEdgeDetail === "curvedEdge" ? Math.round(ieLen * 250) : 0;
+                    const btSqm = (btL * btW) + (2 * btL * btD) + (2 * btW * btD);
+                    const tiledSurcharge = form.infinityEdgeInteriorFinish === "tiled" ? Math.round(btSqm * 250) : 0;
+                    const shapeIsRound = form.poolShape === "Freeform" || form.poolShape === "Round";
+                    const subtotal = Math.round(ieLen * 4500 * wallMultiplier) + curvedSurcharge + tiledSurcharge;
+                    const shapeSurcharge = shapeIsRound ? Math.round(subtotal * 0.10) : 0;
+                    const line1 = form.infinityEdgeInteriorFinish === "tiled" ? "Tiled" : "Grating";
+                    return [line1];
+                })(), value: (() => {
+                    const ieLen = parseFloat(form.infinityEdgeLength || form.poolLength) || 0;
+                    const btL = parseFloat(form.balanceTankLength || form.poolLength) || 0;
+                    const btW = parseFloat(form.balanceTankWidth || "0.8") || 0.8;
+                    const btD = parseFloat(form.balanceTankDepth || "0.8") || 0.8;
+                    const wallH = parseFloat(form.infinityEdgeWallHeight || "1.2") || 1.2;
+                    const wallSteps = Math.round((wallH - 1.2) / 0.1);
+                    const wallMultiplier = wallSteps > 0 ? Math.pow(1.05, wallSteps) : 1;
+                    const curvedSurcharge = form.infinityEdgeDetail === "curvedEdge" ? Math.round(ieLen * 250) : 0;
+                    const btSqm = (btL * btW) + (2 * btL * btD) + (2 * btW * btD);
+                    const tiledSurcharge = form.infinityEdgeInteriorFinish === "tiled" ? Math.round(btSqm * 250) : 0;
+                    const subtotal = Math.round(ieLen * 4500 * wallMultiplier) + curvedSurcharge + tiledSurcharge;
+                    const shapeSurcharge = (form.poolShape === "Freeform" || form.poolShape === "Round") ? Math.round(subtotal * 0.10) : 0;
+                    return subtotal + shapeSurcharge;
+                })() },
             form.hasSpa && { label: "Spa", sub: {
                     square18: "Square Spa 1.8 x 1.8m",
                     square22: "Square Spa 2.2 x 2.2m",
@@ -619,7 +657,7 @@ function EnkipoolsEstimator() {
             parseFloat(form.rockHardGround) > 0 && { label: "Rock or Hard Ground", sub: "PROVISIONAL SUM", value: parseFloat(form.rockHardGround) },
             form.drivewayProtection && parseFloat(form.drivewayProtectionCost) > 0 && { label: "Driveway Protection", sub: "PROVISIONAL SUM", value: parseFloat(form.drivewayProtectionCost) },
             form.hasSpa && form.hasAirBlower && { label: "Air Blower", sub: "Spa Air Blower", value: PP.airBlower },
-            { label: "Shoring, Underground Formwork & Foundations", sub: "PROVISIONAL SUM", value: foundationsCost > 0 ? foundationsCost : 0 },
+            { label: "Shoring, Underground Formwork & Foundations", sub: ({ underPoolPiers: "Under Pool Piers", shallowProppedPiers: "Shallow Propped Piers", protectionPiers: "Protection Piers" }[form.foundationsType] || "") + " — PROVISIONAL SUM", value: foundationsCost > 0 ? foundationsCost : 0 },
             { label: "Aftercare Service (2 x Initial Monthly Services)", sub: "NO CHARGE", value: 0 },
         ].filter(Boolean);
         const exGSTTotal = lines.reduce((s, l) => s + (l.value || 0), 0);
@@ -652,10 +690,11 @@ function EnkipoolsEstimator() {
                         React.createElement("div", { style: { fontSize: 13, fontWeight: 500, color: "#000" } },
                             l.label,
                             l.tbc && l.value > 0 ? " *" : ""),
-                        React.createElement("div", { style: { fontSize: 11, color: l.credit ? "#27ae60" : "#000", marginTop: 2 } }, l.sub)),
-                    React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: l.credit ? "#27ae60" : "#000", whiteSpace: "nowrap", alignSelf: "center" } }, l.value === 0 ? "$0.00" : l.credit
-                        ? `−$${Math.abs(l.value).toLocaleString("en-AU", { minimumFractionDigits: 2 })}`
-                        : `$${l.value.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)))),
+                        React.createElement("div", { style: { fontSize: 11, color: l.credit ? "#27ae60" : "#000", marginTop: 2 } }, Array.isArray(l.sub) ? l.sub.map((s, j) => React.createElement("div", { key: j }, s)) : l.sub)),
+                    React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: l.credit ? "#27ae60" : "#000", whiteSpace: "nowrap", alignSelf: "center" } }, l.tbc ? React.createElement("span", { style: { color: "#e05c3a", fontSize: 12 } }, "PRICE ON REQUEST")
+                        : l.credit
+                            ? `−$${Math.abs(l.value).toLocaleString("en-AU", { minimumFractionDigits: 2 })}`
+                            : `$${l.value.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)))),
                 React.createElement("div", { style: { background: "#f0f4fb", padding: "12px 14px", borderRadius: "0 0 8px 8px", border: "1px solid #e8eef8" } },
                     React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", gap: 32, fontSize: 13, color: "#000", marginBottom: 6 } },
                         React.createElement("span", null, "GST (10%)"),
@@ -856,11 +895,12 @@ function EnkipoolsEstimator() {
                     React.createElement("select", { style: selectStyle, value: form.soilRemoved, onChange: e => set("soilRemoved", e.target.value) },
                         React.createElement("option", { value: "yes" }, "Yes"),
                         React.createElement("option", { value: "no" }, "No"))),
-                form.soilRemoved === "yes" && (React.createElement(Field, { label: "Qty Trucks Required" },
+                React.createElement(Field, { label: "Qty Trucks Required" },
                     React.createElement("select", { style: selectStyle, value: form.truckQty, onChange: e => set("truckQty", e.target.value) },
-                        React.createElement("option", { value: "1" }, "1 Truck \u2014 1 day (extra 1 truck @ $1,750)"),
+                        React.createElement("option", { value: "0" }, "0 Trucks (\u2212$2,500 from pool price)"),
+                        React.createElement("option", { value: "1" }, "1 Truck (\u2212$1,750 from pool price)"),
                         React.createElement("option", { value: "2" }, "2 Trucks \u2014 1 day (included in pool price)"),
-                        React.createElement("option", { value: "3" }, "3 Trucks \u2014 1 day (extra 1 truck @ $1,750)")))),
+                        React.createElement("option", { value: "3" }, "3 Trucks \u2014 1 day (+$1,750 added to pool price)"))),
                 React.createElement(Field, { label: "Tracked Loader (Posi or Wheeled Dumper)" },
                     React.createElement("label", { style: checkboxRowStyle },
                         React.createElement("input", { type: "checkbox", checked: form.trackedLoader, onChange: () => toggle("trackedLoader") }),
@@ -942,6 +982,11 @@ function EnkipoolsEstimator() {
                                         " ",
                                         isIncluded ? "(incl. in pool)" : "(added to pool)");
                                 })()))))),
+                React.createElement(Field, { label: "Foundations \u2014 Type" },
+                    React.createElement("select", { style: selectStyle, value: form.foundationsType, onChange: e => set("foundationsType", e.target.value) },
+                        React.createElement("option", { value: "underPoolPiers" }, "Under Pool Piers"),
+                        React.createElement("option", { value: "shallowProppedPiers" }, "Shallow Propped Piers"),
+                        React.createElement("option", { value: "protectionPiers" }, "Protection Piers"))),
                 React.createElement(Field, { label: "Foundations \u2014 Provisional Sum ($)", full: true },
                     React.createElement("input", { style: { ...inputStyle, borderColor: "#f5a623", background: "#fffbf0" }, type: "number", min: "0", value: form.foundationsPS, onChange: e => set("foundationsPS", e.target.value), placeholder: "Enter $ amount manually (0 = not applicable)" })),
                 React.createElement(Field, { label: "Pipe Run \u2014 Total Distance (lineal m)", full: true },
@@ -956,7 +1001,27 @@ function EnkipoolsEstimator() {
                 React.createElement(Field, { label: "Infinity Edge", full: true },
                     React.createElement("label", { style: checkboxRowStyle },
                         React.createElement("input", { type: "checkbox", checked: form.infinityEdge, onChange: () => toggle("infinityEdge") }),
-                        "Include infinity edge + balance tank"))),
+                        "Include infinity edge + balance tank")),
+                form.infinityEdge && (React.createElement(React.Fragment, null,
+                    React.createElement(Field, { label: "Infinity Edge Detail" },
+                        React.createElement("select", { style: selectStyle, value: form.infinityEdgeDetail, onChange: e => set("infinityEdgeDetail", e.target.value) },
+                            React.createElement("option", { value: "reverseEdge" }, "Reverse Edge (Towards pool)"),
+                            React.createElement("option", { value: "forwardEdge" }, "Forward Edge (Away from pool)"),
+                            React.createElement("option", { value: "curvedEdge" }, "Curved Edge (Curved away from pool)"))),
+                    React.createElement(Field, { label: "Interior Finish" },
+                        React.createElement("select", { style: selectStyle, value: form.infinityEdgeInteriorFinish, onChange: e => set("infinityEdgeInteriorFinish", e.target.value) },
+                            React.createElement("option", { value: "grating" }, "Grating"),
+                            React.createElement("option", { value: "tiled" }, "Tiled"))),
+                    React.createElement(Field, { label: "Infinity Edge Length (m)" },
+                        React.createElement("input", { style: inputStyle, type: "number", min: "0", step: "0.1", value: form.infinityEdgeLength || form.poolLength || "", onChange: e => set("infinityEdgeLength", e.target.value), placeholder: form.poolLength || "e.g. 8" })),
+                    React.createElement(Field, { label: "Balance Tank Length (m)" },
+                        React.createElement("input", { style: inputStyle, type: "number", min: "0", step: "0.1", value: form.balanceTankLength || form.poolLength || "", onChange: e => set("balanceTankLength", e.target.value), placeholder: form.poolLength || "e.g. 8" })),
+                    React.createElement(Field, { label: "Balance Tank Width (m)" },
+                        React.createElement("input", { style: inputStyle, type: "number", min: "0", step: "0.1", value: form.balanceTankWidth || "0.8", onChange: e => set("balanceTankWidth", e.target.value), placeholder: "0.8" })),
+                    React.createElement(Field, { label: "Balance Tank Depth (m)" },
+                        React.createElement("input", { style: inputStyle, type: "number", min: "0", step: "0.1", value: form.balanceTankDepth || "0.8", onChange: e => set("balanceTankDepth", e.target.value), placeholder: "0.8" })),
+                    React.createElement(Field, { label: "Infinity Edge Wall Height (m) \u2014 Above Balance Tank" },
+                        React.createElement("input", { style: inputStyle, type: "number", min: "0", step: "0.1", value: form.infinityEdgeWallHeight || "1.2", onChange: e => set("infinityEdgeWallHeight", e.target.value), placeholder: "1.2" }))))),
             React.createElement(Section, { title: "Interior Finish" },
                 React.createElement(Field, { label: "Interior Type" },
                     React.createElement("select", { style: selectStyle, value: form.interior, onChange: e => set("interior", e.target.value) },
@@ -1121,14 +1186,15 @@ function EnkipoolsEstimator() {
                 const filterDiscountS = form.filterModel === "25inch" ? PP.poolVariables.filterDiscount25inch : 0;
                 const pipeOverage = Math.max(0, (parseFloat(form.pipeRunDistance) || 0) - 10);
                 const pipeCost = Math.round(pipeOverage * PP.poolVariables.pipeRunPerMeter);
-                const baseBeforeUplift = Math.round((Math.round(sqm * PP.poolPerSqm) - Math.round(aquaNeonDisc) + Math.round(tile25Surcharge) + swimoutCostS + fullWidthStepsPool + soilNotRemovedCreditS + soilClassCostS + trafficMgmtCostS + formworkPoolAdditionS + tilePCSurchargeS2 + pumpUpgradeCostS + pipeCost - filterDiscountS
+                const truckQtyS = form.truckQty !== undefined && form.truckQty !== "" ? parseInt(form.truckQty) : 2;
+                const truckAdjS = truckQtyS === 0 ? -2500 : truckQtyS === 1 ? -1750 : truckQtyS === 3 ? 1750 : 0;
+                const baseBeforeUplift = Math.round((Math.round(sqm * PP.poolPerSqm) - Math.round(aquaNeonDisc) + Math.round(tile25Surcharge) + swimoutCostS + fullWidthStepsPool + soilNotRemovedCreditS + soilClassCostS + trafficMgmtCostS + formworkPoolAdditionS + tilePCSurchargeS2 + pumpUpgradeCostS + pipeCost - filterDiscountS + truckAdjS
                     - (form.engineeringPlans === "byOthers" ? PP.poolVariables.engineeringByOthersCredit : 0)) * accessMultiplier * shapeMultiplierS * locationMultiplierS);
                 const poolBase = Math.round(baseBeforeUplift * (1 + marginUpliftPct));
                 const perimSqm = perim * avgDepthTile + sqm;
                 const membraneCost = form.hasMembrane ? Math.round(perimSqm * PP.poolVariables.membranePerSqm) : 0;
                 const extraBobcat = form.bobcatDays ? parseFloat(form.bobcatDays) * PP.poolVariables.bobcatPerDay : 0;
-                const truckQtyS = parseInt(form.truckQty) || 2;
-                const extraTruck = form.soilRemoved === "yes" && truckQtyS !== 2 ? 1750 : 0;
+                const extraTruck = 0; // folded into pool base
                 const trackedLoaderAmt = form.trackedLoader ? Math.round(parseFloat(form.trackedLoaderDays || 1) * 1650) : 0;
                 const tippingQtyS = parseInt(form.tippingLoads) || 8;
                 const extraTipping = tippingQtyS > 8 ? Math.round((tippingQtyS - 8) * 300) : 0;
@@ -1158,7 +1224,24 @@ function EnkipoolsEstimator() {
                 const rockAmt = parseFloat(form.rockHardGround) || 0;
                 const drivewayAmt = form.drivewayProtection ? parseFloat(form.drivewayProtectionCost) || 0 : 0;
                 const sitePrepAmt = form.sitePrepDemolition ? parseFloat(form.sitePrepDemolitionCost) || 0 : 0;
-                const exGSTTotal = poolBase + membraneCost + extraBobcat + extraTruck + trackedLoaderAmt + extraTipping + soilCredit + roadAmt + foundationsAmt + spaAmt + airBlowerAmt + inFloorAmt + solarAmt + lightingAmt + chlorAmt + autofillerAmt + automationAmt + gasAmt + hpAmt + rockAmt + drivewayAmt + sitePrepAmt;
+                const infinityEdgeAmt = (() => {
+                    if (!form.infinityEdge)
+                        return 0;
+                    const ieLen = parseFloat(form.infinityEdgeLength || form.poolLength) || 0;
+                    const btL = parseFloat(form.balanceTankLength || form.poolLength) || 0;
+                    const btW = parseFloat(form.balanceTankWidth || "0.8") || 0.8;
+                    const btD = parseFloat(form.balanceTankDepth || "0.8") || 0.8;
+                    const wallH = parseFloat(form.infinityEdgeWallHeight || "1.2") || 1.2;
+                    const wallSteps = Math.round((wallH - 1.2) / 0.1);
+                    const wallMultiplier = wallSteps > 0 ? Math.pow(1.05, wallSteps) : 1;
+                    const curvedSurcharge = form.infinityEdgeDetail === "curvedEdge" ? Math.round(ieLen * 250) : 0;
+                    const btSqm = (btL * btW) + (2 * btL * btD) + (2 * btW * btD);
+                    const tiledSurcharge = form.infinityEdgeInteriorFinish === "tiled" ? Math.round(btSqm * 250) : 0;
+                    const subtotal = Math.round(ieLen * 4500 * wallMultiplier) + curvedSurcharge + tiledSurcharge;
+                    const shapeSurcharge = (form.poolShape === "Freeform" || form.poolShape === "Round") ? Math.round(subtotal * 0.10) : 0;
+                    return subtotal + shapeSurcharge;
+                })();
+                const exGSTTotal = poolBase + membraneCost + extraBobcat + trackedLoaderAmt + extraTipping + soilCredit + roadAmt + foundationsAmt + spaAmt + airBlowerAmt + inFloorAmt + solarAmt + lightingAmt + chlorAmt + autofillerAmt + automationAmt + gasAmt + hpAmt + rockAmt + drivewayAmt + sitePrepAmt + infinityEdgeAmt;
                 const gst = Math.round(exGSTTotal * 0.10);
                 const incGST = exGSTTotal + gst;
                 // Profit margin: pool base includes 15% (homeowner), 20% (premium), 25% (builder)
@@ -1188,27 +1271,40 @@ function EnkipoolsEstimator() {
                         React.createElement(SumRow, { label: "Volume (approx)", value: `${Math.round(sqm * ((dShallow + dDeep) / 2) * 1000).toLocaleString("en-AU")} L` }),
                         React.createElement(SumRow, { label: "Entry Steps", value: form.hasSteps ? `${form.stepCount} × ${form.stepType === "fullwidth" ? "Full Width Steps" : "Corner Steps"}` : "None" }),
                         form.hasSwimout && React.createElement(SumRow, { label: "Swimout / Ledge", value: `${form.swimoutLength}m × ${form.swimoutWidth}m (${(parseFloat(form.swimoutLength) * parseFloat(form.swimoutWidth)).toFixed(2)} Sq.m)` }),
-                        form.infinityEdge && React.createElement(SumRow, { label: "Infinity Edge", value: "Included" }),
                         React.createElement(SumRow, { label: "Pipe Run", value: (form.pipeRunDistance || 10) + "m total" + (pipeCost > 0 ? " - " + pipeOverage + "m over 10m x $450 = $" + pipeCost.toLocaleString("en-AU") + " (incl. in pool)" : " (within included 10m)") })),
                     form.hasSpa && React.createElement(SumSection, { title: "Spa" },
                         React.createElement(SumRow, { label: "Spa Type / Size", value: { square18: "Square 1.8 x 1.8m", square22: "Square 2.2 x 2.2m", squareGutter: "Square with Gutter", squareRaised: "Square & Raised 300mm", round20: "Round 2.0m", round25: "Round 2.5m", roundGutter: "Round with Gutter", roundGutterRaised: "Round with Gutter & Raised 300mm" }[form.spaType] || form.spaType }),
                         React.createElement(SumRow, { label: "Air Blower", value: form.hasAirBlower ? `Included — $${PP.airBlower.toLocaleString("en-AU")}` : "Not included" }),
                         form.hasAutomation && React.createElement(SumRow, { label: "Automation", value: form.automationType === "intelliCenter" ? "Pentair IntelliCentre PNP8 + Phone Control" : "AquaLink PS8 PDA + iAquaLink Phone Control" })),
-                    React.createElement(SumSection, { title: "Interior" },
+                    form.infinityEdge && React.createElement(SumSection, { title: "Infinity Edge & Balance Tank" },
+                        React.createElement(SumRow, { label: "Edge Detail", value: { reverseEdge: "Reverse Edge (Towards pool)", forwardEdge: "Forward Edge (Away from pool)", curvedEdge: "Curved Edge (Curved away from pool)" }[form.infinityEdgeDetail] || "Included" }),
+                        React.createElement(SumRow, { label: "Edge Length", value: (parseFloat(form.infinityEdgeLength || form.poolLength) || 0) + "m" }),
+                        React.createElement(SumRow, { label: "Wall Height (Above Balance Tank)", value: (form.infinityEdgeWallHeight || "1.2") + "m" }),
+                        React.createElement(SumRow, { label: "Interior Finish", value: (() => {
+                                const btL = parseFloat(form.balanceTankLength || form.poolLength) || 0;
+                                const btW = parseFloat(form.balanceTankWidth || "0.8") || 0.8;
+                                const btD = parseFloat(form.balanceTankDepth || "0.8") || 0.8;
+                                const btSqm = (btL * btW) + (2 * btL * btD) + (2 * btW * btD);
+                                const tiledSurcharge = form.infinityEdgeInteriorFinish === "tiled" ? Math.round(btSqm * 250) : 0;
+                                return form.infinityEdgeInteriorFinish === "tiled" ? "Tiled — " + btSqm.toFixed(1) + " Sq.m x $250 = +$" + tiledSurcharge.toLocaleString("en-AU") : "Grating (no surcharge)";
+                            })() }),
+                        React.createElement(SumRow, { label: "Balance Tank", value: (form.balanceTankLength || form.poolLength || "?") + "m L x " + (form.balanceTankWidth || "0.8") + "m W x " + (form.balanceTankDepth || "0.8") + "m D" }),
                         (() => {
-                            const iLabel = { ceramic: "Ceramic Tile 50x50mm", ceramic25mm: "Ceramic Tile 25x25mm", glass: "Glass Mosaic Tile", aquaneon: "AquaNeon Interior" }[form.interior];
-                            const tileAreaWithWaste = totalTiledArea * 1.08;
-                            const tilePCRateVal = parseFloat(form.tilePCRate) || 55;
-                            const tilePCSurchargeS = tilePCRateVal > 55 ? Math.round(tileAreaWithWaste * (tilePCRateVal - 55)) : 0;
-                            return React.createElement(React.Fragment, null,
-                                React.createElement(SumRow, { label: "Tile Type", value: iLabel }),
-                                React.createElement(SumRow, { label: "Tiled Surface Area", value: `${totalTiledArea.toFixed(1)} Sq.m` }),
-                                React.createElement(SumRow, { label: "Tile Qty (incl. 8% waste)", value: `${tileAreaWithWaste.toFixed(1)} Sq.m` }),
-                                React.createElement(SumRow, { label: "Tile Supply P.C. Rate", value: "$" + tilePCRateVal.toFixed(2) + "/Sq.m" + (tilePCSurchargeS > 0 ? " — +$" + tilePCSurchargeS.toLocaleString("en-AU") + " added to pool price" : " (base rate - included)") }),
-                                form.interior === "ceramic25mm" && React.createElement(SumRow, { label: "25mm Surcharge", value: `${totalTiledArea.toFixed(1)} Sq.m × $35 = $${Math.round(totalTiledArea * 35).toLocaleString("en-AU")}` }),
-                                form.interior === "aquaneon" && React.createElement(SumRow, { label: "AquaNeon Discount", value: `${sqm.toFixed(1)} Sq.m × $145 = −$${Math.round(sqm * 145).toLocaleString("en-AU")}`, credit: true }));
-                        })(),
-                        form.hasMembrane && React.createElement(SumRow, { label: "Waterproof Membrane", value: `${perimSqm.toFixed(1)} Sq.m × $90 = $${Math.round(perimSqm * 90).toLocaleString("en-AU")}` })),
+                            const ieLen = parseFloat(form.infinityEdgeLength || form.poolLength) || 0;
+                            const wallH = parseFloat(form.infinityEdgeWallHeight || "1.2") || 1.2;
+                            const wallSteps = Math.round((wallH - 1.2) / 0.1);
+                            const wallMultiplier = wallSteps > 0 ? Math.pow(1.05, wallSteps) : 1;
+                            const adjRate = Math.round(4500 * wallMultiplier);
+                            const curvedSurcharge = form.infinityEdgeDetail === "curvedEdge" ? Math.round(ieLen * 250) : 0;
+                            const btL = parseFloat(form.balanceTankLength || form.poolLength) || 0;
+                            const btW = parseFloat(form.balanceTankWidth || "0.8") || 0.8;
+                            const btD = parseFloat(form.balanceTankDepth || "0.8") || 0.8;
+                            const btSqm = (btL * btW) + (2 * btL * btD) + (2 * btW * btD);
+                            const tiledSurcharge = form.infinityEdgeInteriorFinish === "tiled" ? Math.round(btSqm * 250) : 0;
+                            const subtotal = Math.round(ieLen * adjRate) + curvedSurcharge + tiledSurcharge;
+                            const shapeSurcharge = (form.poolShape === "Freeform" || form.poolShape === "Round") ? Math.round(subtotal * 0.10) : 0;
+                            return React.createElement(SumRow, { label: "Total Price", value: "$" + adjRate.toLocaleString("en-AU") + "/m" + (wallSteps > 0 ? " +" + wallSteps + "x5% wall height" : "") + (curvedSurcharge > 0 ? " +$" + curvedSurcharge.toLocaleString("en-AU") + " curved" : "") + (tiledSurcharge > 0 ? " +$" + tiledSurcharge.toLocaleString("en-AU") + " tiled" : "") + (shapeSurcharge > 0 ? " +" + form.poolShape + " 10% = +$" + shapeSurcharge.toLocaleString("en-AU") : "") + " = $" + (subtotal + shapeSurcharge).toLocaleString("en-AU") });
+                        })()),
                     React.createElement(SumSection, { title: "Site" },
                         React.createElement(SumRow, { label: "Project Location", value: { metro: "Metro", peninsulaPorSor: "Peninsula — Portsea / Sorrento (+12%)", peninsulaBlaSho: "Peninsula — Blairgowrie / Shoreham (+9%)", country: "Country Project (+12%)" }[form.projectLocation] || form.projectLocation }),
                         React.createElement(SumRow, { label: "Access Width", value: { "1800": "≤ 1800mm — Very Tight (+15%)", "2200": "2000–2450mm — Ok (+5%)", "2700": "2500–2950mm — Good (+0%)", "3000": "3000mm+ — Great (−2.5%)", "acreage": "Acreage (−5%)" }[form.accessWidth] || form.accessWidth, credit: form.accessWidth === "3000" || form.accessWidth === "acreage" }),
@@ -1218,7 +1314,7 @@ function EnkipoolsEstimator() {
                     React.createElement(SumSection, { title: "Excavation" },
                         form.sitePrepDemolition && parseFloat(form.sitePrepDemolitionCost) > 0 && React.createElement(SumRow, { label: "Site Prep or Demolition", value: `$${parseFloat(form.sitePrepDemolitionCost).toLocaleString("en-AU", { minimumFractionDigits: 2 })}` }),
                         React.createElement(SumRow, { label: "Soil Removed", value: form.soilRemoved === "yes" ? "Yes" : "No — credit −$2,400 applied to pool price", credit: form.soilRemoved === "no" }),
-                        form.soilRemoved === "yes" && React.createElement(SumRow, { label: "Trucks", value: truckQtyS + " truck" + (truckQtyS !== 1 ? "s" : "") + (extraTruck > 0 ? " (+$" + extraTruck.toLocaleString("en-AU") + " @ $1,750)" : " (included)") }),
+                        form.soilRemoved === "yes" && React.createElement(SumRow, { label: "Trucks", value: truckQtyS + " truck" + (truckQtyS !== 1 ? "s" : "") + (truckAdjS < 0 ? " (−$" + Math.abs(truckAdjS).toLocaleString("en-AU") + " incl. in pool price)" : truckAdjS > 0 ? " (+$" + truckAdjS.toLocaleString("en-AU") + " incl. in pool price)" : " (included)"), credit: truckAdjS < 0 }),
                         form.trackedLoader && React.createElement(SumRow, { label: "Tracked Loader (Posi or Wheeled Dumper)", value: `${form.trackedLoaderDays} day${parseFloat(form.trackedLoaderDays) !== 1 ? "s" : ""} @ $1,650 = $${trackedLoaderAmt.toLocaleString("en-AU")}` }),
                         React.createElement(SumRow, { label: "Tipping Loads", value: tippingQtyS + " loads" + (extraTipping > 0 ? " — " + (tippingQtyS - 8) + " extra @ $300 = +$" + extraTipping.toLocaleString("en-AU") : " (within included 8)") }),
                         form.soilOnSite && parseFloat(form.soilLoadsOnSite) > 0 && React.createElement(SumRow, { label: "Soil Left on Site", value: `${form.soilLoadsOnSite} loads — credit −$${(parseFloat(form.soilLoadsOnSite) * 180).toLocaleString("en-AU")}`, credit: true }),
@@ -1237,9 +1333,24 @@ function EnkipoolsEstimator() {
                         form.hasFormwork && formworkQtyS > 0 && (() => { const fwL = { topBond: "Top Bond/Plinth", lightDuty: "Light Duty", mediumDuty: "Medium Duty", heavyDuty: "Heavy Duty" }[form.formworkType]; const fwVal = (form.formworkType === "topBond" ? formworkQtyS + "lm" : formworkQtyS + " Sq.m") + " @ $" + formworkRateS + "/unit = $" + formworkRawS.toLocaleString("en-AU") + " (incl. in pool)"; return React.createElement(SumRow, { label: "Formwork - " + fwL, value: fwVal }); })(),
                         membraneCost > 0 && React.createElement(SumRow, { label: "Waterproof Membrane", value: fmtS(membraneCost) }),
                         soilCredit < 0 && React.createElement(SumRow, { label: "Soil on Site (" + soilLoads + " loads)", value: "−$" + Math.abs(soilCredit).toLocaleString("en-AU"), credit: true }),
-                        foundationsAmt > 0 && React.createElement(SumRow, { label: "Foundations / Shoring PS", value: fmtS(foundationsAmt) }),
+                        foundationsAmt > 0 && React.createElement(SumRow, { label: "Foundations / Shoring PS", value: ({ underPoolPiers: "Under Pool Piers", shallowProppedPiers: "Shallow Propped Piers", protectionPiers: "Protection Piers" }[form.foundationsType] || "") + " — $" + foundationsAmt.toLocaleString("en-AU") }),
                         pipeCost > 0 && React.createElement(SumRow, { label: "Pipe Run (" + pipeOverage + "m over 10m @ $450/m)", value: "$" + pipeCost.toLocaleString("en-AU") + " (incl. in pool price)" }),
                         pumpUpgradeCostS > 0 && (() => { const pl = { intelliflo: "Intelliflo VS", enviromax: "EnviroMax VS" }[form.pumpModel]; return React.createElement(SumRow, { label: pl + " Pump Upgrade", value: "+" + "$" + pumpUpgradeCostS.toLocaleString("en-AU") + " (incl. in pool price)" }); })()),
+                    React.createElement(SumSection, { title: "Interior" },
+                        (() => {
+                            const iLabel = { ceramic: "Ceramic Tile 50x50mm", ceramic25mm: "Ceramic Tile 25x25mm", glass: "Glass Mosaic Tile", aquaneon: "AquaNeon Interior" }[form.interior];
+                            const tileAreaWithWaste = totalTiledArea * 1.08;
+                            const tilePCRateVal = parseFloat(form.tilePCRate) || 55;
+                            const tilePCSurchargeS = tilePCRateVal > 55 ? Math.round(tileAreaWithWaste * (tilePCRateVal - 55)) : 0;
+                            return React.createElement(React.Fragment, null,
+                                React.createElement(SumRow, { label: "Tile Type", value: iLabel }),
+                                React.createElement(SumRow, { label: "Tiled Surface Area", value: `${totalTiledArea.toFixed(1)} Sq.m` }),
+                                React.createElement(SumRow, { label: "Tile Qty (incl. 8% waste)", value: `${tileAreaWithWaste.toFixed(1)} Sq.m` }),
+                                React.createElement(SumRow, { label: "Tile Supply P.C. Rate", value: "$" + tilePCRateVal.toFixed(2) + "/Sq.m" + (tilePCSurchargeS > 0 ? " — +$" + tilePCSurchargeS.toLocaleString("en-AU") + " added to pool price" : " (base rate - included)") }),
+                                form.interior === "ceramic25mm" && React.createElement(SumRow, { label: "25mm Surcharge", value: `${totalTiledArea.toFixed(1)} Sq.m × $35 = $${Math.round(totalTiledArea * 35).toLocaleString("en-AU")}` }),
+                                form.interior === "aquaneon" && React.createElement(SumRow, { label: "AquaNeon Discount", value: `${sqm.toFixed(1)} Sq.m × $145 = −$${Math.round(sqm * 145).toLocaleString("en-AU")}`, credit: true }));
+                        })(),
+                        form.hasMembrane && React.createElement(SumRow, { label: "Waterproof Membrane", value: `${perimSqm.toFixed(1)} Sq.m × $90 = $${Math.round(perimSqm * 90).toLocaleString("en-AU")}` })),
                     React.createElement(SumSection, { title: "Equipment & Extras" },
                         React.createElement(SumRow, { label: "Filter", value: form.filterModel === "Tagelus100D" ? "Pentair Tagelus 100D" : "Pentair 25in (−$480 incl. in pool price)" }),
                         (() => { const pumpLabel = { intelliflo: "Pentair Intelliflo VS", enviromax: "Pentair EnviroMax VS", whisperflo15: "WhisperFlo 1.5Hp" }[form.pumpModel] || form.pumpModel; return React.createElement(SumRow, { label: "Pump", value: pumpLabel }); })(),
