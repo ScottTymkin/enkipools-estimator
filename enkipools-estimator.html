@@ -1,0 +1,1534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Enkipools Estimation Tool</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f4fb; }
+    input[type=number]::-webkit-inner-spin-button { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+(function(React, ReactDOM) {
+  "use strict";
+  const { useState } = React;
+// ─── 2026 RATE CARDS (from POOL ESTIMATE master sheet) ───────────────────────
+const R = {
+    warrantyInsurance: { standard: 1600, large: 3000 },
+    buildingPermit: { standard: 2800, large: 3650 },
+    engineering: { small: 850, medium: 1234, large: 1684, complex: 3850, hydraulics: 300 },
+    draftingPlans: 1500,
+    excavation: {
+        excavatorTruck: 1500, // per day
+        bobcat: 960,
+        extraTruck: 1000,
+        tipping: 180, // per load
+        float: 200,
+        wheelbarrow: 650,
+        trackedLoader: 650,
+    },
+    steel: { perBar: 22, meshPerSqm: 108.05, minSteelFix: 2100, perBarFix: 30 },
+    formwork: { topBond: 65, lightDuty: 110, mediumDuty: 135, heavyDuty: 200 },
+    concrete: { perM3: 540, spa: 200, infinityEdge: 500 },
+    pp1: 6500, // gunite/shotcrete package
+    tiles: { ceramic: 50, glass: 105, ceramic25mm: 60 },
+    tiling: { ceramic: 130, ceramic25mm: 165, glass: 220, steps: 300, roundSteps: 450, swimout: 600, spa: 4000, roundSpa: 6500 },
+    waterproofing: 75, // per sqm
+    equipment: {
+        pipeRun: 4000,
+        valves: 473,
+        slabs: 110,
+        filter25inch: 850.83,
+        filterTagelus100D: 1357.65,
+        intelliflo: 1718,
+        enviromax: 1072,
+        whisperflo15: 542,
+        whisperflo20: 574,
+        chlorinatorSWC25: 1124,
+        chlorinatorSWC35: 1227,
+        chlorinatorSWC45: 1940.85,
+        intelliChlor: 2082.65,
+        aquaLink: 2886,
+        iAquaLink: 337,
+        intelliCenter: 2232 + 337, // intelliCenter + iAquaLink
+        paralevel: 227,
+        aquafill: 565,
+    },
+    heatPumps: {
+        "None": 0,
+        "Sunlover Oasis iX 19kW": 3365,
+        "Sunlover Oasis iX 24kW": 4350,
+        "Sunlover Oasis iX 28kW": 5580,
+        "Sunlover Oasis iX 36T": 6290,
+        "Sunlover Rapid Pro 32kW": 7230,
+        "Sunlover Rapid Pro 40kW": 8300,
+        "Pentair HXi 20kW": 3786,
+        "Pentair HXi 24kW": 4314,
+        "Pentair VXi 20kW": 4071,
+        "Pentair VXi 28kW": 5487,
+        "Pentair VXi 32kW": 6016,
+        "Supreme Nova V2 18kW": 2950,
+        "Supreme Nova V2 25kW": 4400,
+        "Supreme Nova V2 28kW": 5250,
+    },
+    // Chlorinator dropdown also uses SWC45 key for IntelliChlor options
+    chlorinator_keys: ["SWC25", "SWC35", "SWC45", "intelliChlor60", "intelliChlor40"],
+    gasHeater: 3995,
+    inFloor: { stepNozzle: 245, floorNozzle: 368, port6valve: 1046, whisperflo20: 574 },
+    solar: { perSqm: 80, pump: 585, filter: 200, controller: 482, internalPlumb: 1200 },
+    lights: { WN9: 234.82, transformer: 90, cable20m: 31, cable30m: 48 },
+    labour: { rate: 85, overhead: 35 },
+};
+// ─── PROPOSAL PRICES (ex GST) — these are the EXACT prices shown to customers ─
+// All prices ex GST as confirmed by Scott
+const PP = {
+    lightPerUnit: 910, // Spa Electric WN9 Quantum (default)
+    lightTypes: {
+        WN9: { label: "Spa Electric WN9 Quantum", price: 910 },
+        WN9Multi: { label: "Spa Electric WN9 Quantum Multicolour", price: 1170 },
+        atomEM: { label: "Spa Electric Atom EM", price: 910 },
+        atomEMMulti: { label: "Spa Electric Atom EM Multicolour", price: 1170 },
+    },
+    paralevel: 1236,
+    aquafill: 1220,
+    chlorinator: {
+        SWC25: 3876,
+        SWC35: 4076,
+        SWC45: 4476,
+        intelliChlor60: 4476,
+        intelliChlor40: 4476,
+    },
+    automation: {
+        intelliCenter: 5342, // Pentair IntelliCentre PNP8 + Phone Control
+        aquaLink: 4842, // AquaLink PS8 PDA + iAquaLink Phone Control
+    },
+    gasHeater: 8430,
+    heatPumps: {
+        "None": 0,
+        "Sunlover Oasis iX 19kW": 8768.18,
+        "Sunlover Oasis iX 24kW": 9572.73,
+        "Sunlover Oasis iX 28kW": 10604.55,
+        "Sunlover Oasis iX 36T": 12604.55,
+        "Sunlover Rapid Pro 32kW": 12810.82,
+        "Sunlover Rapid Pro 40kW": 13831.82,
+        "Pentair VXi 28kW": 11604.55,
+        "Pentair VXi 32kW": 12604.55,
+        // TBC — using cost+margin placeholder until confirmed:
+        "Pentair HXi 20kW": null,
+        "Pentair HXi 24kW": null,
+        "Pentair VXi 20kW": null,
+        "Supreme Nova V2 18kW": null,
+        "Supreme Nova V2 25kW": null,
+        "Supreme Nova V2 28kW": null,
+    },
+    // PCC2000 in-floor — tiered by pool sqm
+    inFloor: (sqm) => {
+        if (sqm <= 36)
+            return 12812;
+        if (sqm <= 45)
+            return 15812;
+        return 18812;
+    },
+    // Solar — $350 per sqm. All other solar costs absorbed into pool base price.
+    solar: (sqm) => Math.round(sqm * 285),
+    // Spa prices (ex GST) — confirmed
+    spa: {
+        square18: 18734, // Square 1.8 x 1.8
+        square22: 19348, // Square 2.2 x 2.2
+        squareGutter: 22348, // Square with Gutter
+        squareRaised: 24348, // Square & Raised 300mm
+        round20: 21484, // Round 2.0
+        round25: 23484, // Round 2.5
+        roundGutter: 25348, // Round with Gutter
+        roundGutterRaised: 28348, // Round with Gutter & Raised 300mm
+    },
+    airBlower: 1810, // Spa air blower (ex GST)
+    // Swimming Pool base price
+    poolPerSqm: 2750, // $2,750 per sqm ex GST
+    poolVariables: {
+        formworkPerSqm: 110, // legacy — replaced by formwork type selector below
+        formworkTopBond: 65, // per lineal meter — included in pool base price
+        formworkLightDuty: 120, // per sqm — additional cost added to pool base
+        formworkMediumDuty: 145, // per sqm — additional cost added to pool base
+        formworkHeavyDuty: 200, // per sqm — additional cost added to pool base
+        membranePerSqm: 90, // per sqm — only when out of ground
+        bobcatPerDay: 1500,
+        additionalTruckPerDay: 1500,
+        pipeRunPerMeter: 450, // per lineal meter OVER 10m
+        soilOnSiteCredit: 180, // per tipping load saved — negative line item
+        roadClosurePS: 2500, // provisional sum if road closure required
+        aquaNeonDiscount: 145, // per sqm reduction on pool base price when AquaNeon selected
+        tile25mmSurcharge: 35, // per sqm additional cost for 25mm ceramic tiles
+        pumpUpgradeIntelliFlo: 1600, // added to pool base when Intelliflo VS selected
+        pumpUpgradeEnviroMax: 1000, // added to pool base when EnviroMax VS selected
+        filterDiscount25inch: 480, // deducted from pool base when Pentair 25in selected
+        swimoutPerSqm: 1000, // per sqm of swimout/ledge area added to pool base price
+        engineeringByOthersCredit: 1500, // deducted from pool base when engineering by others
+    },
+};
+// Access multiplier — applied to Swimming Pool base price
+function accessMult(val) {
+    switch (val) {
+        case "1800": return 1.15; // < 1800mm Very Tight +15%
+        case "2200": return 1.05; // 2000-2450mm Ok +5%
+        case "2700": return 1.00; // 2500-2950mm Good +0%
+        case "3000": return 0.975; // 3000mm+ Great -2.5%
+        case "acreage": return 0.95; // Acreage -5%
+        default: return 1.00;
+    }
+}
+// Margin by client type
+function getMargin(clientType) {
+    if (clientType === "premium")
+        return 0.20;
+    if (clientType === "builder")
+        return 0.25;
+    return 0.15; // homeowner default
+}
+// ─── CALCULATION ENGINE ───────────────────────────────────────────────────────
+function calculate(f) {
+    const L = parseFloat(f.poolLength) || 0;
+    const W = parseFloat(f.poolWidth) || 0;
+    const dShallow = parseFloat(f.depthShallow) || 1.2;
+    const dDeep = parseFloat(f.depthDeep) || 1.8;
+    const avgDepth = (dShallow + dDeep) / 2;
+    const sqm = L * W;
+    const volumeL = sqm * avgDepth * 1000;
+    const mult = accessMult(f.accessWidth);
+    const margin = getMargin(f.clientType);
+    const soilPenalty = f.soilClass === "H" ? 3000 : f.soilClass === "E" || f.soilClass === "P" ? 6500 : 0;
+    const engSize = sqm < 20 ? "small" : sqm < 40 ? "medium" : sqm < 65 ? "large" : "complex";
+    // ── 1. PRELIMINARY WORKS ──
+    let prelim = 0;
+    prelim += R.engineering[engSize] + R.engineering.hydraulics;
+    prelim += sqm > 45 ? R.warrantyInsurance.large : R.warrantyInsurance.standard;
+    prelim += sqm > 45 ? R.buildingPermit.large : R.buildingPermit.standard;
+    prelim += R.draftingPlans;
+    prelim += soilPenalty;
+    // ── 2. EXCAVATION ──
+    let excav = 0;
+    const truckDays = parseInt(f.truckDays) || Math.max(2, Math.round(sqm * avgDepth * 0.6));
+    const bobcatDays = parseInt(f.bobcatDays) || (f.accessWidth < 2500 ? 2 : 1);
+    const tippingLoads = parseInt(f.tippingLoads) || Math.round(sqm * avgDepth * 1.5);
+    excav += R.excavation.excavatorTruck * truckDays;
+    excav += R.excavation.bobcat * bobcatDays;
+    excav += R.excavation.tipping * tippingLoads;
+    excav += R.excavation.float;
+    if (parseInt(f.accessWidth) < 2500)
+        excav += R.excavation.wheelbarrow;
+    if (parseInt(f.accessWidth) >= 2500)
+        excav += R.excavation.trackedLoader;
+    if (f.trafficMgmt)
+        excav += 3500;
+    excav *= mult;
+    // ── 3. CONCRETE SHELL ──
+    let shell = 0;
+    const barCount = Math.round(sqm * 5.5);
+    shell += barCount * R.steel.perBar;
+    shell += Math.max(R.steel.minSteelFix, barCount * R.steel.perBarFix);
+    const concreteM3 = Math.round(sqm * avgDepth * 0.48);
+    shell += concreteM3 * R.concrete.perM3;
+    shell += R.pp1;
+    const formworkSqm = Math.round(sqm * 0.5);
+    const fwType = f.soilClass === "H" || f.soilClass === "E" || f.soilClass === "P" ? "heavyDuty" : f.extraFormwork ? "mediumDuty" : "lightDuty";
+    shell += R.formwork[fwType] * formworkSqm;
+    if (f.hasSpa)
+        shell += f.spaType === "round" ? R.concrete.spa * 8 : R.concrete.spa * 6;
+    if (f.infinityEdge)
+        shell += R.concrete.infinityEdge + 9000;
+    if (f.provisionalSum)
+        shell += parseInt(f.provisionalSumAmt) || 0;
+    shell *= mult;
+    // ── 4. FILTRATION & EQUIPMENT ──
+    let equip = 0;
+    equip += R.equipment.pipeRun;
+    equip += R.equipment.valves;
+    equip += R.equipment.slabs;
+    const filterCost = f.filterModel === "Tagelus100D" ? R.equipment.filterTagelus100D : R.equipment.filter25inch;
+    equip += filterCost;
+    equip += f.pumpModel === "intelliflo" ? R.equipment.intelliflo : f.pumpModel === "enviromax" ? R.equipment.enviromax : R.equipment.whisperflo15;
+    const chlorCost = f.chlorinator === "SWC35" ? R.equipment.chlorinatorSWC35 : f.chlorinator === "SWC45" ? R.equipment.chlorinatorSWC45 : f.chlorinator === "intelliChlor" ? R.equipment.intelliChlor : R.equipment.chlorinatorSWC25;
+    equip += chlorCost;
+    if (f.hasAutomation)
+        equip += f.automationType === "intelliCenter" ? R.equipment.intelliCenter : R.equipment.aquaLink + R.equipment.iAquaLink;
+    const autofillerCost = f.autofillerType === "paralevel" ? R.equipment.paralevel : R.equipment.aquafill;
+    equip += autofillerCost;
+    // In-floor cleaning
+    let infloorCost = 0;
+    if (f.hasInFloor) {
+        const stepNozzles = Math.max(4, Math.round(sqm * 0.15));
+        const floorNozzles = Math.max(6, Math.round(sqm * 0.35));
+        infloorCost = stepNozzles * R.inFloor.stepNozzle + floorNozzles * R.inFloor.floorNozzle + R.inFloor.port6valve + R.inFloor.whisperflo20;
+        if (f.hasSpa)
+            infloorCost += 2500;
+        equip += infloorCost;
+    }
+    // Heat pump
+    const hpCost = R.heatPumps[f.heatPump] || 0;
+    if (hpCost)
+        equip += hpCost;
+    // Gas heater
+    if (f.hasGasHeater)
+        equip += R.gasHeater;
+    // Solar
+    let solarCost = 0;
+    if (f.hasSolar) {
+        const solarSqm = parseInt(f.solarSqm) || Math.round(sqm);
+        solarCost = solarSqm * R.solar.perSqm + R.solar.pump + R.solar.filter + R.solar.controller + R.solar.internalPlumb;
+        equip += solarCost;
+    }
+    // ── 5. INTERIOR (TILING) ──
+    let interior = 0;
+    // Calculate pool surface area (walls + floor)
+    const perim = 2 * (L + W);
+    const wallArea = perim * avgDepth;
+    const floorArea = sqm;
+    const totalTileArea = wallArea + floorArea;
+    const tileCost = f.interior === "glass" ? R.tiles.glass : f.interior === "ceramic25mm" ? R.tiles.ceramic25mm : R.tiles.ceramic;
+    const tilingRate = f.interior === "glass" ? R.tiling.glass : f.interior === "ceramic25mm" ? R.tiling.ceramic25mm : R.tiling.ceramic;
+    interior += totalTileArea * (tileCost + tilingRate);
+    if (f.hasSteps)
+        interior += parseInt(f.stepCount || 3) * R.tiling.steps;
+    if (f.hasSwimout)
+        interior += R.tiling.swimout;
+    if (f.hasSpa)
+        interior += f.spaType === "round" ? R.tiling.roundSpa : R.tiling.spa;
+    if (f.waterproofMembrane)
+        interior += totalTileArea * R.waterproofing;
+    // ── 6. LIGHTING ──
+    let lighting = 0;
+    const lightCount = parseInt(f.lightCount) || Math.max(2, Math.round(L / 3));
+    lighting += lightCount * (R.lights.WN9 + R.lights.transformer + R.lights.cable30m);
+    // ── 7. COMPLETION ──
+    let completion = 0;
+    completion += 800; // fitout / commission labour
+    completion += 800; // rubbish
+    completion += 375; // pool chemicals
+    // ── LABOUR ──
+    const labourHrs = Math.round(sqm * 8.5 + (f.hasSpa ? 40 : 0) + (f.hasInFloor ? 25 : 0));
+    const labourCost = labourHrs * R.labour.rate;
+    const overheadCost = labourHrs * R.labour.overhead;
+    const subtotal = prelim + excav + shell + equip + interior + lighting + completion + labourCost + overheadCost;
+    const profit = subtotal * margin;
+    const exGST = subtotal + profit;
+    const gst = exGST * 0.10;
+    const total = exGST + gst;
+    // Line items for the proposal quotation table
+    const poolBasePrice = shell + excav + prelim + labourCost + overheadCost + completion + R.equipment.pipeRun + R.equipment.valves + R.equipment.slabs + filterCost + (f.pumpModel === "intelliflo" ? R.equipment.intelliflo : f.pumpModel === "enviromax" ? R.equipment.enviromax : R.equipment.whisperflo15) + autofillerCost;
+    const poolBasePriceWithMargin = poolBasePrice * (1 + margin) * 1.10;
+    return {
+        sqm: sqm.toFixed(1),
+        volumeL: Math.round(volumeL),
+        engineeringSize: engSize,
+        truckDays, bobcatDays, tippingLoads, labourHrs,
+        sections: {
+            preliminary: Math.round(prelim),
+            excavation: Math.round(excav),
+            shell: Math.round(shell),
+            equipment: Math.round(equip),
+            interior: Math.round(interior),
+            lighting: Math.round(lighting),
+            completion: Math.round(completion),
+            labour: Math.round(labourCost),
+            overhead: Math.round(overheadCost),
+        },
+        subtotal: Math.round(subtotal),
+        profit: Math.round(profit),
+        marginPct: (margin * 100).toFixed(0),
+        exGST: Math.round(exGST),
+        gst: Math.round(gst),
+        total: Math.round(total),
+    };
+}
+const fmt = (n) => n?.toLocaleString("en-AU", { style: "currency", currency: "AUD", minimumFractionDigits: 0, maximumFractionDigits: 0 });
+// ─── COMPONENTS ──────────────────────────────────────────────────────────────
+const Section = ({ title, children }) => (React.createElement("div", { style: { marginBottom: 24 } },
+    React.createElement("div", { style: { fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", color: "#1a56b0", textTransform: "uppercase", borderBottom: "2px solid #1a56b0", paddingBottom: 4, marginBottom: 14 } }, title),
+    React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 20px" } }, children)));
+const Field = ({ label, children, full }) => (React.createElement("div", { style: { gridColumn: full ? "1 / -1" : undefined } },
+    React.createElement("label", { style: { display: "block", fontSize: 11, fontWeight: 600, color: "#555", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" } }, label),
+    children));
+const inputStyle = { width: "100%", padding: "7px 10px", border: "1.5px solid #dde3ef", borderRadius: 6, fontSize: 13, background: "#fafbff", boxSizing: "border-box", outline: "none" };
+const selectStyle = { ...inputStyle };
+const checkboxRowStyle = { display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginTop: 2 };
+function EnkipoolsEstimator() {
+    const [form, setForm] = useState({
+        // Client
+        clientFirstName: "", clientSurname: "", clientAddress: "", clientSuburb: "",
+        clientType: "homeowner", proposalType: "pool",
+        // Pool
+        poolLength: "8", poolWidth: "4", poolDiameter: "", depthShallow: "1.2", depthDeep: "1.8",
+        poolShape: "Rectangle",
+        // Site
+        accessWidth: "2700", soilClass: "M", trafficMgmt: false, trafficMgmtCostInput: "", engineeringPlans: "byEnki", outOfGround: false, projectLocation: "metro",
+        soilRemoved: "yes", truckQty: "2", trackedLoader: false, trackedLoaderDays: "1",
+        tippingLoads: "8", rockHardGround: "0", drivewayProtection: false, drivewayProtectionCost: "", drivewayProtectionSize: "10",
+        roadClosure: false, roadClosureCostInput: "", roadClosureType: "half", roadClosureQty: "1", sitePrepDemolition: false, sitePrepDemolitionCost: "",
+        extraFormwork: false, provisionalSum: false, provisionalSumAmt: "0",
+        // Interior
+        hasBeams: false, beamLength: "", beamWidth: "300",
+        waterproofMembrane: false, tilePCRate: "55",
+        // Spa
+        hasSpa: false, spaType: "square18", hasAirBlower: false,
+        // Equipment
+        filterModel: "Tagelus100D", pumpModel: "whisperflo15",
+        chlorinator: "SWC35",
+        hasInFloor: true,
+        hasSolar: false, solarSqm: "", solarLocation: "",
+        hasGasHeater: false,
+        heatPump: "None", heatPumpWallMount: false, heatPumpWallMountCost: "",
+        hasAutomation: false, automationType: "intelliCenter",
+        autofillerType: "paralevel",
+        lightCount: "", lightType: "WN9",
+        infinityEdge: false, infinityEdgeGrating: false, infinityEdgeDetail: "reverseEdge", infinityEdgeInteriorFinish: "grating",
+        infinityEdgeLength: "", balanceTankLength: "", balanceTankWidth: "", balanceTankDepth: "", infinityEdgeWallHeight: "",
+        // Pool price variables (shown as separate lines on proposal)
+        hasFormwork: false, formworkType: "lightDuty", formworkSqm: "",
+        hasMembrane: false, membraneAreaOnly: "", membraneAreaOnlyType: "",
+        extraBobcatDays: "", // extra bobcat days beyond excavation ($1,500/day)
+        extraTruckDays: "", // additional truck days ($1,500/day)
+        externalSurfacesSqm: "", externalSurfacesType: "", externalSurfacesCost: "",
+        pipeRunDistance: "10", // total pipe run in lineal meters — cost applies above 10m
+        soilOnSite: false, // soil left on site — negative credit based on loads saved
+        soilLoadsOnSite: "", // number of truck loads NOT removed (credit)
+    });
+    const [result, setResult] = useState(null);
+    const [view, setView] = useState("estimator"); // "estimator" | "result" | "proposal"
+    const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+    const toggle = (k) => setForm(f => ({ ...f, [k]: !f[k] }));
+    const run = () => {
+        const r = calculate(form);
+        setResult(r);
+        setView("proposal");
+    };
+    const today = new Date().toLocaleDateString("en-AU", { day: "2-digit", month: "2-digit", year: "numeric" });
+    // ── STYLES ──
+    const appStyle = {
+        fontFamily: "'Segoe UI', system-ui, sans-serif",
+        background: "#f0f4fb",
+        minHeight: "100vh",
+        padding: "0 0 40px",
+    };
+    const headerStyle = {
+        background: "linear-gradient(135deg, #0d2d6b 0%, #1a56b0 100%)",
+        color: "white",
+        padding: "18px 28px",
+        display: "flex", alignItems: "center", gap: 16,
+        boxShadow: "0 2px 12px rgba(0,0,0,0.18)",
+    };
+    const cardStyle = {
+        background: "white",
+        borderRadius: 12,
+        padding: "24px 28px",
+        boxShadow: "0 1px 6px rgba(0,0,0,0.07)",
+        maxWidth: 860,
+        margin: "24px auto 0",
+    };
+    const btnPrimary = {
+        background: "linear-gradient(135deg, #1a56b0, #0d2d6b)",
+        color: "white", border: "none", borderRadius: 8,
+        padding: "11px 28px", fontSize: 14, fontWeight: 700,
+        cursor: "pointer", letterSpacing: "0.04em",
+    };
+    const btnSecondary = {
+        background: "white", color: "#1a56b0", border: "2px solid #1a56b0",
+        borderRadius: 8, padding: "9px 22px", fontSize: 13, fontWeight: 600, cursor: "pointer",
+    };
+    const rowStyle = { display: "flex", gap: 12, alignItems: "center", marginTop: 16 };
+    // ── RESULT SECTION LINE ──
+    const ResultLine = ({ label, value, bold, indent, highlight }) => (React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "5px 10px", background: highlight ? "#f0f6ff" : indent ? "#fafbff" : "transparent", borderRadius: 6, marginBottom: 2 } },
+        React.createElement("span", { style: { fontSize: 13, color: bold ? "#0d2d6b" : indent ? "#666" : "#333", fontWeight: bold ? 700 : 400, paddingLeft: indent ? 16 : 0 } }, label),
+        React.createElement("span", { style: { fontSize: 13, fontWeight: bold ? 700 : 500, color: bold ? "#1a56b0" : "#333" } }, value)));
+    // ── PROPOSAL OUTPUT ──
+    const ProposalOutput = () => {
+        if (!result)
+            return null;
+        const margin = getMargin(form.clientType);
+        // Exact PP prices for confirmed line items
+        const lCount = parseInt(form.lightCount) || Math.max(2, Math.round(parseFloat(form.poolLength || 9) / 3));
+        const spaLightBonus = form.hasSpa ? 1 : 0;
+        const totalLights = lCount + spaLightBonus;
+        const lightUnitPrice = (PP.lightTypes[form.lightType] || PP.lightTypes.WN9).price;
+        const lightLabel = (PP.lightTypes[form.lightType] || PP.lightTypes.WN9).label;
+        const lightingPrice = totalLights * lightUnitPrice;
+        const chlorLabel = {
+            SWC25: "Pool Controls SWC25 with Auto pH",
+            SWC35: "Pool Controls SWC35 with Auto pH",
+            SWC45: "Pool Controls SWC45 with Auto pH",
+            intelliChlor60: "Pentair IntelliChlor IC60 + IntelliChem",
+            intelliChlor40: "Pentair IntelliChlor IC40 + IntelliChem",
+        }[form.chlorinator] || "Pool Controls SWC35 with Auto pH";
+        const chlorPrice = PP.chlorinator[form.chlorinator] || PP.chlorinator.SWC35;
+        const autofillerPrice = form.autofillerType === "paralevel" ? PP.paralevel : PP.aquafill;
+        const autofillerLabel = form.autofillerType === "paralevel" ? "Paramount Paralevel" : "AquaFill";
+        const automationRequired = form.hasAutomation || form.hasSpa;
+        const automationPrice = automationRequired
+            ? (form.automationType === "intelliCenter" ? PP.automation.intelliCenter : PP.automation.aquaLink)
+            : 0;
+        const automationLabel = form.automationType === "intelliCenter"
+            ? "Pentair IntelliCentre PNP8 + Phone Control"
+            : "AquaLink PS8 PDA + iAquaLink Phone Control";
+        const gasRequired = form.proposalType === "poolspa" || form.hasGasHeater;
+        const gasPrice = gasRequired ? PP.gasHeater : 0;
+        const hpExact = form.heatPump !== "None" ? PP.heatPumps[form.heatPump] : 0;
+        const hpBasePrice = form.heatPump !== "None"
+            ? (hpExact !== null && hpExact !== undefined ? hpExact : (R.heatPumps[form.heatPump] || 0))
+            : 0;
+        const hpWallMountCost = form.heatPump !== "None" && form.heatPumpWallMount ? parseFloat(form.heatPumpWallMountCost) || 0 : 0;
+        const hpPrice = hpBasePrice + hpWallMountCost;
+        const hpIsExact = form.heatPump !== "None" && hpExact !== null && hpExact !== undefined;
+        // Swimming Pool base price = $2,750/sqm (incl. 15% margin) ± interior adjustments ± margin uplift
+        // Pool area — circle (π × r²) if Round, otherwise L × W
+        const poolDiam = parseFloat(form.poolDiameter) || parseFloat(form.poolLength || 8);
+        const sqmNum = form.poolShape === "Round"
+            ? Math.PI * Math.pow(poolDiam / 2, 2)
+            : parseFloat(form.poolLength || 8) * parseFloat(form.poolWidth || 4);
+        const aquaNeonDiscount = form.interior === "aquaneon" ? Math.round(sqmNum * PP.poolVariables.aquaNeonDiscount) : 0;
+        const avgDepth = (parseFloat(form.depthShallow || 1.2) + parseFloat(form.depthDeep || 1.8)) / 2 + 0.1;
+        const perim = form.poolShape === "Round"
+            ? Math.PI * poolDiam
+            : 2 * (parseFloat(form.poolLength || 8) + parseFloat(form.poolWidth || 4));
+        const totalTiledArea = sqmNum + (perim * avgDepth);
+        const tile25mmSurcharge = form.interior === "ceramic25mm" ? Math.round(totalTiledArea * PP.poolVariables.tile25mmSurcharge) : 0;
+        // Swimout cost — $1,000/sqm added to pool base
+        const swimoutSqm = form.hasSwimout ? parseFloat(form.swimoutLength || 3) * parseFloat(form.swimoutWidth || 0.45) : 0;
+        const swimoutCost = Math.round(swimoutSqm * PP.poolVariables.swimoutPerSqm);
+        // Pump upgrade cost — added to pool base
+        const pumpUpgradeCost = form.pumpModel === "intelliflo" ? PP.poolVariables.pumpUpgradeIntelliFlo
+            : form.pumpModel === "enviromax" ? PP.poolVariables.pumpUpgradeEnviroMax : 0;
+        // Filter discount — Pentair 25in reduces pool base by $480
+        const filterDiscount = form.filterModel === "25inch" ? PP.poolVariables.filterDiscount25inch : 0;
+        // Tile Supply P.C. Rate — base $55/sqm included in pool price; excess above $55 × tile area with waste
+        const tilePCRateVal = parseFloat(form.tilePCRate) || 55;
+        const tileAreaWithWaste = totalTiledArea * 1.08;
+        const tilePCSurcharge = tilePCRateVal > 55 ? Math.round(tileAreaWithWaste * (tilePCRateVal - 55)) : 0;
+        // Soil not removed — credit 8 included loads x $300
+        const soilNotRemovedCredit = form.soilRemoved === "no" ? -(8 * 300) : 0;
+        // Soil class — H adds $3,000, E adds $6,500 to pool base
+        const soilClassCost = form.soilClass === "H" ? 3000 : form.soilClass === "E" ? 6500 : 0;
+        const trafficMgmtCost = form.trafficMgmt ? parseFloat(form.trafficMgmtCostInput) || 0 : 0;
+        // Full width steps — $750/m of pool width added to pool, $500/m to in-floor
+        const poolWidth = parseFloat(form.poolWidth || 4);
+        const fullWidthStepsCostPool = form.hasSteps && form.stepType === "fullwidth" ? Math.round(poolWidth * 750) : 0;
+        const fullWidthStepsCostInFloor = form.hasInFloor && form.hasSteps && form.stepType === "fullwidth" ? Math.round(poolWidth * 500) : 0;
+        const halfWidthStepsCostPool = form.hasSteps && form.stepType === "halfwidth" ? Math.round(poolWidth * 375) : 0;
+        const halfWidthStepsCostInFloor = form.hasInFloor && form.hasSteps && form.stepType === "halfwidth" ? Math.round(poolWidth * 375) : 0;
+        // Formwork — declare before baseBeforeUplift as topBond is included in pool base
+        const formworkQty = form.hasFormwork ? parseFloat(form.formworkSqm) || 0 : 0;
+        const formworkRates = { topBond: 65, lightDuty: 120, mediumDuty: 145, heavyDuty: 200 };
+        const formworkRate = formworkRates[form.formworkType] || 0;
+        const formworkRawCost = Math.round(formworkQty * formworkRate);
+        const formworkIsIncluded = true; // all formwork now included in pool base
+        const formworkCost = 0; // no separate line — always in pool base
+        const formworkPoolAddition = form.hasFormwork ? formworkRawCost : 0;
+        // Pipe run cost — declared here as it feeds into pool base
+        const pipeRunMeters = parseFloat(form.pipeRunDistance) || 0;
+        const pipeRunOverage = Math.max(0, pipeRunMeters - 10);
+        const pipeRunCost = Math.round(pipeRunOverage * PP.poolVariables.pipeRunPerMeter);
+        // Margin uplift: base already includes 15%; premium adds 5%, builder adds 10%
+        const marginUpliftPct = form.clientType === "premium" ? 0.05 : form.clientType === "builder" ? 0.10 : 0;
+        const accessMultiplier = accessMult(form.accessWidth);
+        // Pool shape multiplier — Freeform +10%, Round +8%
+        const shapeMultiplier = form.poolShape === "Freeform" ? 1.10 : form.poolShape === "Round" ? 1.08 : 1.0;
+        // Project location multiplier — applied after all other costs
+        const locationMultiplier = form.projectLocation === "peninsulaPorSor" ? 1.12
+            : form.projectLocation === "country" ? 1.12
+                : form.projectLocation === "peninsulaBlaSho" ? 1.09
+                    : 1.0;
+        // Trucks: 2 included. 0 trucks = −$2,500, 1 truck = −$1,750, 3 trucks = +$1,750 — all in pool base
+        const truckQty = form.truckQty !== undefined && form.truckQty !== "" ? parseInt(form.truckQty) : 2;
+        const truckAdjustment = truckQty === 0 ? -2500
+            : truckQty === 1 ? -1750
+                : truckQty === 3 ? 1750
+                    : 0;
+        // Driveway protection — price by size, added to pool base
+        const drivewayPrices = { "10": 950, "15": 1100, "20": 1200, "25": 1300, "30": 1500, "40": 1800 };
+        const drivewayPoolCost = form.drivewayProtection ? (drivewayPrices[form.drivewayProtectionSize] || 950) : 0;
+        // Road closure — type x qty, added to pool base
+        const roadClosureRate = form.roadClosureType === "full" ? 2500 : 1500;
+        const roadClosureQtyNum = parseInt(form.roadClosureQty) || 1;
+        const roadClosureCost = form.roadClosure ? roadClosureRate * roadClosureQtyNum : 0;
+        // External surfaces cost — added to pool base
+        const externalSurfacesCost = Math.round(parseFloat(form.externalSurfacesCost) || 0);
+        // Membrane area only — additional membrane areas (Spa, one wall etc) @ $90/sqm
+        const membraneAreaOnlyCost = Math.round((parseFloat(form.membraneAreaOnly) || 0) * 90);
+        // Beam cost — $800/sqm for non-standard beams above 180mm
+        const beamSqm = form.hasBeams && form.beamLength ? parseFloat(form.beamLength) * (parseFloat(form.beamWidth) / 1000) : 0;
+        const beamCost = Math.round(beamSqm * 800);
+        const baseBeforeUplift = Math.round((Math.round(sqmNum * PP.poolPerSqm) - aquaNeonDiscount + tile25mmSurcharge + swimoutCost + fullWidthStepsCostPool + halfWidthStepsCostPool + soilNotRemovedCredit + soilClassCost + trafficMgmtCost + formworkPoolAddition + tilePCSurcharge + pumpUpgradeCost + pipeRunCost - filterDiscount + truckAdjustment + externalSurfacesCost + membraneAreaOnlyCost + drivewayPoolCost + roadClosureCost + beamCost
+            - (form.engineeringPlans === "byOthers" ? PP.poolVariables.engineeringByOthersCredit : 0)) * accessMultiplier * shapeMultiplier * locationMultiplier);
+        const poolBase = Math.round(baseBeforeUplift * (1 + marginUpliftPct));
+        // In-floor — tiered exact price + full width steps surcharge
+        const inFloorBase = form.hasInFloor ? PP.inFloor(sqmNum) : 0;
+        const inFloorPrice = inFloorBase + fullWidthStepsCostInFloor + halfWidthStepsCostInFloor;
+        // Solar — $350/sqm exact
+        const solarSqmCount = parseInt(form.solarSqm) || Math.round(sqmNum);
+        const solarPrice = form.hasSolar ? PP.solar(solarSqmCount) : 0;
+        // Spa — exact confirmed prices
+        const spaPrice = form.hasSpa ? (PP.spa[form.spaType] || PP.spa.square18) : 0;
+        // Variables — each becomes its own proposal line
+        const perimSqm = (form.poolShape === "Round"
+            ? Math.PI * poolDiam
+            : 2 * (parseFloat(form.poolLength || 9) + parseFloat(form.poolWidth || 4))) * parseFloat(form.depthDeep || 1.8) + sqmNum;
+        const membraneCost = form.hasMembrane ? Math.round(perimSqm * PP.poolVariables.membranePerSqm) : 0;
+        const extraTruckCost = 0; // no longer a separate line — folded into pool base
+        const trackedLoaderCost = form.trackedLoader ? Math.round(parseFloat(form.trackedLoaderDays || 1) * 1650) : 0;
+        // Tipping: 8 loads included. Each load above 8 = $300
+        const tippingQty = parseInt(form.tippingLoads) || 8;
+        const extraTippingCost = tippingQty > 8 ? Math.round((tippingQty - 8) * 300) : 0;
+        const extraBobcatCost = form.bobcatDays ? Math.round(parseFloat(form.bobcatDays) * PP.poolVariables.bobcatPerDay) : 0;
+        const foundationsCost = parseFloat(form.foundationsPS) || 0;
+        const soilLoads = parseFloat(form.soilLoadsOnSite) || 0;
+        const soilCredit = form.soilOnSite && soilLoads > 0 ? -Math.round(soilLoads * PP.poolVariables.soilOnSiteCredit) : 0;
+        // Swimming Pool base price
+        const poolBasePrice = poolBase;
+        // Pre-compute Swimming Pool sub-label to avoid nested template literals
+        const interiorLabel = form.interior === "glass" ? "Glass Mosaic Tile"
+            : form.interior === "ceramic25mm" ? "Ceramic Tile 25x25mm (incl. $" + tile25mmSurcharge.toLocaleString("en-AU") + " surcharge on " + totalTiledArea.toFixed(1) + " Sq.m tiled surface)"
+                : form.interior === "aquaneon" ? "AquaNeon Interior (incl. $" + aquaNeonDiscount.toLocaleString("en-AU") + " reduction)"
+                    : "Ceramic Tile 50x50mm";
+        const fwLabel = { topBond: "Top Bond/Plinth", lightDuty: "Light Duty", mediumDuty: "Medium Duty", heavyDuty: "Heavy Duty" }[form.formworkType] || "";
+        const poolSubLabel = interiorLabel
+            + (formworkPoolAddition > 0 ? " — " + fwLabel + " Formwork (+$" + formworkPoolAddition.toLocaleString("en-AU") + ")" : "")
+            + (swimoutCost > 0 ? " — incl. Swimout " + swimoutSqm.toFixed(2) + " Sq.m ($" + swimoutCost.toLocaleString("en-AU") + ")" : "")
+            + (beamCost > 0 ? " — Beams " + form.beamLength + "m x " + form.beamWidth + "mm (+$" + beamCost.toLocaleString("en-AU") + ")" : "")
+            + (fullWidthStepsCostPool > 0 ? " — incl. Full Width Steps ($" + fullWidthStepsCostPool.toLocaleString("en-AU") + ")" : "")
+            + (halfWidthStepsCostPool > 0 ? " — incl. Half Width Steps ($" + halfWidthStepsCostPool.toLocaleString("en-AU") + ")" : "")
+            + (form.engineeringPlans === "byOthers" ? " — Engineering by Others (-$1,500)" : "")
+            + (soilNotRemovedCredit < 0 ? " — Soil on Site (-$2,400)" : "")
+            + (soilClassCost > 0 ? " — Soil Class " + form.soilClass + " (+$" + soilClassCost.toLocaleString("en-AU") + ")" : "")
+            + (shapeMultiplier > 1 ? " — " + form.poolShape + " shape (+" + ((shapeMultiplier - 1) * 100).toFixed(0) + "%)" : "")
+            + (trafficMgmtCost > 0 ? " — Traffic Management (+$" + trafficMgmtCost.toLocaleString("en-AU") + ")" : "")
+            + (tilePCSurcharge > 0 ? " — Tile P.C. upgrade (+$" + tilePCSurcharge.toLocaleString("en-AU") + ")" : "")
+            + (filterDiscount > 0 ? " — Pentair 25in filter (-$" + filterDiscount.toLocaleString("en-AU") + ")" : "")
+            + (pumpUpgradeCost > 0 ? " — " + (form.pumpModel === "intelliflo" ? "Intelliflo VS" : "EnviroMax VS") + " upgrade (+$" + pumpUpgradeCost.toLocaleString("en-AU") + ")" : "")
+            + (truckAdjustment !== 0 ? " — " + truckQty + " truck" + (truckQty !== 1 ? "s" : "") + " (" + (truckAdjustment > 0 ? "+" : "") + "$" + truckAdjustment.toLocaleString("en-AU") + ")" : "")
+            + (roadClosureCost > 0 ? " — Road Closure " + (form.roadClosureType === "full" ? "Full Day" : "1/2 Day") + " x" + roadClosureQtyNum + " (+$" + roadClosureCost.toLocaleString("en-AU") + ")" : "")
+            + (drivewayPoolCost > 0 ? " — Driveway Protection " + form.drivewayProtectionSize + "m (+$" + drivewayPoolCost.toLocaleString("en-AU") + ")" : "")
+            + (membraneAreaOnlyCost > 0 ? " — Membrane Area " + form.membraneAreaOnly + " Sq.m (+$" + membraneAreaOnlyCost.toLocaleString("en-AU") + ")" : "")
+            + (externalSurfacesCost > 0 ? " — External Surfaces (+$" + externalSurfacesCost.toLocaleString("en-AU") + ")" : "")
+            + (pipeRunCost > 0 ? " — Pipe Run " + pipeRunOverage + "m over 10m (+$" + pipeRunCost.toLocaleString("en-AU") + ")" : "")
+            + (locationMultiplier > 1 ? " — " + (form.projectLocation === "peninsulaPorSor" ? "Peninsula Portsea/Sorrento" : form.projectLocation === "peninsulaBlaSho" ? "Peninsula Blairgowrie/Shoreham" : "Country") + " (+" + ((locationMultiplier - 1) * 100).toFixed(0) + "%)" : "");
+        const lines = [
+            form.sitePrepDemolition && parseFloat(form.sitePrepDemolitionCost) > 0 && { label: "Site Prep or Demolition", sub: "As quoted", value: parseFloat(form.sitePrepDemolitionCost) },
+            { label: "Swimming Pool", sub: poolSubLabel, value: poolBasePrice },
+            membraneCost > 0 && { label: "Waterproof Membrane", sub: `${perimSqm.toFixed(0)} Sq.m @ $${PP.poolVariables.membranePerSqm}/Sq.m`, value: membraneCost },
+            extraBobcatCost > 0 && { label: "Bobcat", sub: `${form.bobcatDays} day${parseFloat(form.bobcatDays) !== 1 ? "s" : ""} @ $${PP.poolVariables.bobcatPerDay.toLocaleString("en-AU")}/day`, value: extraBobcatCost },
+            trackedLoaderCost > 0 && { label: "Tracked Loader (Posi or Wheeled Dumper)", sub: `${form.trackedLoaderDays} day${parseFloat(form.trackedLoaderDays) !== 1 ? "s" : ""} @ $1,650/day`, value: trackedLoaderCost },
+            extraTippingCost > 0 && { label: "Additional Tipping", sub: `${tippingQty - 8} loads above included 8 @ $300/load`, value: extraTippingCost },
+            soilCredit < 0 && { label: "Soil Left on Site", sub: `${soilLoads} load${soilLoads !== 1 ? "s" : ""} remaining on site — credit`, value: soilCredit, credit: true },
+            form.roadClosure && roadClosureCost > 0 && { label: "Road Closure", sub: (form.roadClosureType === "full" ? "Full Day" : "1/2 Day") + " x " + roadClosureQtyNum + " = $" + roadClosureCost.toLocaleString("en-AU") + " — incl. in Swimming Pool price", value: 0, hideZero: true },
+            form.infinityEdge && { label: "Infinity Edge & Balance Tank", sub: (() => {
+                    const ieDetail = { reverseEdge: "Reverse Edge (Towards pool)", forwardEdge: "Forward Edge (Away from pool)", curvedEdge: "Curved Edge (Curved away from pool)" }[form.infinityEdgeDetail] || "";
+                    const ieLen = parseFloat(form.infinityEdgeLength || form.poolLength) || 0;
+                    const btL = parseFloat(form.balanceTankLength || form.poolLength) || 0;
+                    const btW = parseFloat(form.balanceTankWidth || "0.8") || 0.8;
+                    const btD = parseFloat(form.balanceTankDepth || "0.8") || 0.8;
+                    const wallH = parseFloat(form.infinityEdgeWallHeight || "1.2") || 1.2;
+                    const wallSteps = Math.round((wallH - 1.2) / 0.1);
+                    const wallMultiplier = wallSteps > 0 ? Math.pow(1.05, wallSteps) : 1;
+                    const baseIERate = Math.round(4500 * wallMultiplier);
+                    const curvedSurcharge = form.infinityEdgeDetail === "curvedEdge" ? Math.round(ieLen * 250) : 0;
+                    const btSqm = (btL * btW) + (2 * btL * btD) + (2 * btW * btD);
+                    const tiledSurcharge = form.infinityEdgeInteriorFinish === "tiled" ? Math.round(btSqm * 250) : 0;
+                    const shapeIsRound = form.poolShape === "Freeform" || form.poolShape === "Round";
+                    const subtotal = Math.round(ieLen * 4500 * wallMultiplier) + curvedSurcharge + tiledSurcharge;
+                    const shapeSurcharge = shapeIsRound ? Math.round(subtotal * 0.10) : 0;
+                    const line1 = form.infinityEdgeInteriorFinish === "tiled" ? "Tiled" : "Grating";
+                    return [line1];
+                })(), value: (() => {
+                    const ieLen = parseFloat(form.infinityEdgeLength || form.poolLength) || 0;
+                    const btL = parseFloat(form.balanceTankLength || form.poolLength) || 0;
+                    const btW = parseFloat(form.balanceTankWidth || "0.8") || 0.8;
+                    const btD = parseFloat(form.balanceTankDepth || "0.8") || 0.8;
+                    const wallH = parseFloat(form.infinityEdgeWallHeight || "1.2") || 1.2;
+                    const wallSteps = Math.round((wallH - 1.2) / 0.1);
+                    const wallMultiplier = wallSteps > 0 ? Math.pow(1.05, wallSteps) : 1;
+                    const curvedSurcharge = form.infinityEdgeDetail === "curvedEdge" ? Math.round(ieLen * 250) : 0;
+                    const btSqm = (btL * btW) + (2 * btL * btD) + (2 * btW * btD);
+                    const tiledSurcharge = form.infinityEdgeInteriorFinish === "tiled" ? Math.round(btSqm * 250) : 0;
+                    const subtotal = Math.round(ieLen * 4500 * wallMultiplier) + curvedSurcharge + tiledSurcharge;
+                    const shapeSurcharge = (form.poolShape === "Freeform" || form.poolShape === "Round") ? Math.round(subtotal * 0.10) : 0;
+                    return subtotal + shapeSurcharge;
+                })() },
+            form.hasSpa && { label: "Spa", sub: {
+                    square18: "Square Spa 1.8 x 1.8m",
+                    square22: "Square Spa 2.2 x 2.2m",
+                    squareGutter: "Square Spa with Gutter",
+                    squareRaised: "Square Spa & Raised 300mm",
+                    round20: "Round Spa 2.0m",
+                    round25: "Round Spa 2.5m",
+                    roundGutter: "Round Spa with Gutter",
+                    roundGutterRaised: "Round Spa with Gutter & Raised 300mm",
+                }[form.spaType] || "Spa", value: spaPrice },
+            form.hasInFloor && { label: "In Floor Cleaning & Circulation System", sub: "Paramount PCC2000 with MDX" + (fullWidthStepsCostInFloor > 0 ? " — incl. Full Width Steps ($" + fullWidthStepsCostInFloor.toLocaleString("en-AU") + ")" : "") + (halfWidthStepsCostInFloor > 0 ? " — incl. Half Width Steps ($" + halfWidthStepsCostInFloor.toLocaleString("en-AU") + ")" : ""), value: inFloorPrice },
+            form.hasSolar && { label: `Solar Heating — ${solarSqmCount} Sq.m`, sub: form.solarLocation || "On House Roof", value: solarPrice },
+            { label: "LED Lighting (Including Cabling to Equip Area)", sub: totalLights + " x " + lightLabel + (spaLightBonus > 0 ? " (incl. 1 x Spa)" : ""), value: lightingPrice },
+            { label: "Salt Chlorinator", sub: chlorLabel, value: chlorPrice },
+            { label: "Water Refill Regulator", sub: autofillerLabel, value: autofillerPrice },
+            automationRequired && { label: "Pool & Spa Automation", sub: automationLabel, value: automationPrice },
+            gasRequired && { label: "Gas Heater", sub: "Pentair Master Temp 400 Mj", value: gasPrice },
+            form.heatPump !== "None" && { label: "Heat Pump", sub: form.heatPump + (!hpIsExact ? " (est.)" : "") + (hpWallMountCost > 0 ? " — incl. Wall Mounting ($" + hpWallMountCost.toLocaleString("en-AU") + ")" : ""), value: hpPrice, tbc: !hpIsExact },
+            parseFloat(form.rockHardGround) > 0 && { label: "Rock or Hard Ground", sub: "PROVISIONAL SUM", value: parseFloat(form.rockHardGround) },
+            form.drivewayProtection && { label: "Driveway Protection", sub: (() => { const sizes = { "10": "10m", "15": "15m", "20": "20m", "25": "25m", "30": "30m", "40": "40m" }; return (sizes[form.drivewayProtectionSize] || "10m") + " @ 2400mm — incl. in Swimming Pool price"; })(), value: 0, hideZero: true },
+            form.hasSpa && form.hasAirBlower && { label: "Air Blower", sub: "Spa Air Blower", value: PP.airBlower },
+            { label: "Shoring, Underground Formwork & Foundations", sub: ({ underPoolPiers: "Under Pool Piers", shallowProppedPiers: "Shallow Propped Piers", protectionPiers: "Protection Piers" }[form.foundationsType] || "") + " — PROVISIONAL SUM", value: foundationsCost > 0 ? foundationsCost : 0 },
+            { label: "Aftercare Service (2 x Initial Monthly Services)", sub: "NO CHARGE", value: 0 },
+        ].filter(Boolean);
+        const exGSTTotal = lines.reduce((s, l) => s + (l.value || 0), 0);
+        const gst = Math.round(exGSTTotal * 0.10);
+        const incGSTTotal = exGSTTotal + gst;
+        const hasTBC = lines.some(l => l.tbc && l.value > 0);
+        const fmtEx = (n) => `$${n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        return (React.createElement("div", null,
+            React.createElement("div", { style: { background: "#f0f4fb", borderRadius: 10, padding: "20px 24px", marginBottom: 16 } },
+                React.createElement("div", { style: { fontSize: 12, color: "#000", marginBottom: 2 } }, "Prepared for"),
+                React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#000" } },
+                    form.clientFirstName,
+                    " ",
+                    form.clientSurname),
+                React.createElement("div", { style: { fontSize: 13, color: "#000" } },
+                    form.clientAddress,
+                    ", ",
+                    form.clientSuburb),
+                React.createElement("div", { style: { fontSize: 12, color: "#000", marginTop: 3 } }, today)),
+            hasTBC && (React.createElement("div", { style: { padding: "9px 14px", background: "#fff8e6", border: "1px solid #f5c842", borderRadius: 8, fontSize: 12, color: "#7a5800", marginBottom: 12 } },
+                "\u26A0 Items marked ",
+                React.createElement("strong", null, "*"),
+                " \u2014 some heat pump models use estimated prices (not yet confirmed).")),
+            React.createElement("div", { style: { marginBottom: 8 } },
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr auto", padding: "9px 14px", background: "#0d2d6b", color: "white", borderRadius: "8px 8px 0 0", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" } },
+                    React.createElement("span", null, "Item"),
+                    React.createElement("span", null, "Price (ex GST)")),
+                lines.map((l, i) => (React.createElement("div", { key: i, style: { display: "grid", gridTemplateColumns: "1fr auto", gap: 8, padding: "10px 14px", background: l.credit ? "#f0fff4" : i % 2 === 0 ? "white" : "#fafbff", borderLeft: `3px solid ${l.credit ? "#27ae60" : "transparent"}`, borderRight: "1px solid #e8eef8", borderBottom: "1px solid #e8eef8" } },
+                    React.createElement("div", null,
+                        React.createElement("div", { style: { fontSize: 13, fontWeight: 500, color: "#000" } },
+                            l.label,
+                            l.tbc && l.value > 0 ? " *" : ""),
+                        React.createElement("div", { style: { fontSize: 11, color: l.credit ? "#27ae60" : "#000", marginTop: 2 } }, Array.isArray(l.sub) ? l.sub.map((s, j) => React.createElement("div", { key: j }, s)) : l.sub)),
+                    React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: l.credit ? "#27ae60" : "#000", whiteSpace: "nowrap", alignSelf: "center" } }, l.tbc ? React.createElement("span", { style: { color: "#e05c3a", fontSize: 12 } }, "PRICE ON REQUEST")
+                        : l.credit
+                            ? `−$${Math.abs(l.value).toLocaleString("en-AU", { minimumFractionDigits: 2 })}`
+                            : `$${l.value.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)))),
+                React.createElement("div", { style: { background: "#f0f4fb", padding: "12px 14px", borderRadius: "0 0 8px 8px", border: "1px solid #e8eef8" } },
+                    React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", gap: 32, fontSize: 13, color: "#000", marginBottom: 6 } },
+                        React.createElement("span", null, "GST (10%)"),
+                        React.createElement("span", { style: { fontWeight: 600 } }, fmtEx(gst))),
+                    React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", gap: 32, fontSize: 17, fontWeight: 800, color: "#000" } },
+                        React.createElement("span", null, "Total inc GST"),
+                        React.createElement("span", null, fmtEx(incGSTTotal))))),
+            React.createElement("div", { style: { fontSize: 11, color: "#000", marginTop: 6 } }, "Prices shown exclude GST - ABN 20 150 014 636 - Valid 30 days")));
+    };
+    return (React.createElement("div", { style: appStyle },
+        React.createElement("div", { style: headerStyle },
+            React.createElement("div", null,
+                React.createElement("div", { style: { fontSize: 22, fontWeight: 900, letterSpacing: "0.02em" } }, "enkipools"),
+                React.createElement("div", { style: { fontSize: 11, opacity: 0.75, letterSpacing: "0.12em", textTransform: "uppercase" } }, "Estimation Tool")),
+            React.createElement("div", { style: { marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" } },
+                [["estimator", "Estimator"], ["proposal", "Quotation"], ["result", "Summary"]].map(([v, label]) => (React.createElement("button", { key: v, onClick: () => v !== "estimator" && result && setView(v), style: {
+                        padding: "6px 16px", borderRadius: 20, border: "none", cursor: result || v === "estimator" ? "pointer" : "default",
+                        background: view === v ? "rgba(255,255,255,0.25)" : "transparent",
+                        color: "white", fontSize: 12, fontWeight: 600, opacity: (v !== "estimator" && !result) ? 0.4 : 1,
+                    } }, label))),
+                React.createElement("div", { style: { width: 1, height: 24, background: "rgba(255,255,255,0.3)", margin: "0 4px" } }),
+                React.createElement("button", { onClick: () => {
+                        const filename = (form.clientFirstName || "estimate") + "-" + (form.clientSurname || "") + "-" + new Date().toISOString().slice(0, 10) + ".json";
+                        const blob = new Blob([JSON.stringify({ form, savedAt: new Date().toISOString() }, null, 2)], { type: "application/json" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = filename;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                    }, style: { padding: "6px 14px", borderRadius: 20, border: "1px solid rgba(255,255,255,0.4)", cursor: "pointer", background: "transparent", color: "white", fontSize: 12, fontWeight: 600 } }, "\uD83D\uDCBE Save"),
+                React.createElement("label", { style: { padding: "6px 14px", borderRadius: 20, border: "1px solid rgba(255,255,255,0.4)", cursor: "pointer", background: "transparent", color: "white", fontSize: 12, fontWeight: 600 } },
+                    "\uD83D\uDCC2 Load",
+                    React.createElement("input", { type: "file", accept: ".json", style: { display: "none" }, onChange: e => {
+                            const file = e.target.files[0];
+                            if (!file)
+                                return;
+                            const reader = new FileReader();
+                            reader.onload = ev => {
+                                try {
+                                    const data = JSON.parse(ev.target.result);
+                                    if (data.form) {
+                                        setForm(f => ({ ...f, ...data.form }));
+                                        setResult(null);
+                                        setView("estimator");
+                                        alert("Estimate loaded successfully!");
+                                    }
+                                }
+                                catch {
+                                    alert("Invalid file — please select a valid estimate JSON file.");
+                                }
+                            };
+                            reader.readAsText(file);
+                            e.target.value = "";
+                        } })))),
+        view === "estimator" && (React.createElement("div", { style: cardStyle },
+            React.createElement("div", { style: { fontSize: 17, fontWeight: 800, color: "#0d2d6b", marginBottom: 20 } }, "New Pool Estimation"),
+            React.createElement(Section, { title: "Client & Proposal" },
+                React.createElement(Field, { label: "First Name" },
+                    React.createElement("input", { style: inputStyle, value: form.clientFirstName, onChange: e => set("clientFirstName", e.target.value), placeholder: "e.g. Peter" })),
+                React.createElement(Field, { label: "Surname" },
+                    React.createElement("input", { style: inputStyle, value: form.clientSurname, onChange: e => set("clientSurname", e.target.value), placeholder: "e.g. Haig" })),
+                React.createElement(Field, { label: "Address" },
+                    React.createElement("input", { style: inputStyle, value: form.clientAddress, onChange: e => set("clientAddress", e.target.value), placeholder: "e.g. 35 Rockley Road" })),
+                React.createElement(Field, { label: "Suburb" },
+                    React.createElement("input", { style: inputStyle, value: form.clientSuburb, onChange: e => set("clientSuburb", e.target.value), placeholder: "e.g. South Yarra" })),
+                React.createElement(Field, { label: "Client Type" },
+                    React.createElement("select", { style: selectStyle, value: form.clientType, onChange: e => set("clientType", e.target.value) },
+                        React.createElement("option", { value: "homeowner" }, "Homeowner (15% Margin)"),
+                        React.createElement("option", { value: "premium" }, "Premium Homeowner (20% Margin)"),
+                        React.createElement("option", { value: "builder" }, "Builder (25% Margin)"))),
+                React.createElement(Field, { label: "Proposal Type" },
+                    React.createElement("select", { style: selectStyle, value: form.proposalType, onChange: e => {
+                            const val = e.target.value;
+                            setForm(f => ({ ...f, proposalType: val, hasSpa: val === "poolspa" ? true : f.hasSpa }));
+                        } },
+                        React.createElement("option", { value: "pool" }, "Pool Only"),
+                        React.createElement("option", { value: "poolspa" }, "Pool & Spa")))),
+            React.createElement(Section, { title: "Pool Dimensions" },
+                React.createElement(Field, { label: "Pool Shape" },
+                    React.createElement("select", { style: selectStyle, value: form.poolShape, onChange: e => set("poolShape", e.target.value) },
+                        React.createElement("option", null, "Rectangle"),
+                        React.createElement("option", null, "L-Shape"),
+                        React.createElement("option", null, "Freeform"),
+                        React.createElement("option", null, "Round"),
+                        React.createElement("option", null, "Lap Pool"))),
+                React.createElement(Field, { label: "" }),
+                React.createElement(Field, { label: "Length (m)" },
+                    React.createElement("input", { style: inputStyle, type: "number", step: "0.5", min: "2", value: form.poolLength, onChange: e => set("poolLength", e.target.value) })),
+                React.createElement(Field, { label: "Width (m)" },
+                    React.createElement("input", { style: inputStyle, type: "number", step: "0.5", min: "1.5", value: form.poolWidth, onChange: e => set("poolWidth", e.target.value) })),
+                form.poolShape === "Round" && (React.createElement(Field, { label: "Diameter (m)", full: true },
+                    React.createElement("input", { style: { ...inputStyle, borderColor: "#1a56b0" }, type: "number", step: "0.5", min: "1.5", value: form.poolDiameter, onChange: e => set("poolDiameter", e.target.value), placeholder: "e.g. 4.0" }))),
+                React.createElement(Field, { label: "Depth \u2014 Shallow End (m)" },
+                    React.createElement("input", { style: inputStyle, type: "number", step: "0.1", min: "0.5", max: "1.5", value: form.depthShallow, onChange: e => set("depthShallow", e.target.value) })),
+                React.createElement(Field, { label: "Depth \u2014 Deep End (m)" },
+                    React.createElement("input", { style: inputStyle, type: "number", step: "0.1", min: "1.0", max: "2.5", value: form.depthDeep, onChange: e => set("depthDeep", e.target.value) })),
+                React.createElement(Field, { label: "Entry Steps", full: true },
+                    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" } },
+                        React.createElement("label", { style: checkboxRowStyle },
+                            React.createElement("input", { type: "checkbox", checked: form.hasSteps, onChange: () => toggle("hasSteps") }),
+                            "Include steps"),
+                        form.hasSteps && (React.createElement(React.Fragment, null,
+                            React.createElement("select", { style: { ...selectStyle, width: 200 }, value: form.stepType, onChange: e => set("stepType", e.target.value) },
+                                React.createElement("option", { value: "corner" }, "Included corner steps"),
+                                React.createElement("option", { value: "halfwidth" }, "Half width steps"),
+                                React.createElement("option", { value: "fullwidth" }, "Full width steps")),
+                            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                                React.createElement("span", { style: { fontSize: 12, color: "#555" } }, "No. of steps"),
+                                React.createElement("input", { style: { ...inputStyle, width: 70 }, type: "number", min: "1", max: "10", value: form.stepCount, onChange: e => set("stepCount", e.target.value), placeholder: "3" })))))),
+                React.createElement(Field, { label: "Swimout / Ledge", full: true },
+                    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" } },
+                        React.createElement("label", { style: checkboxRowStyle },
+                            React.createElement("input", { type: "checkbox", checked: form.hasSwimout, onChange: () => toggle("hasSwimout") }),
+                            "Include swimout"),
+                        form.hasSwimout && (React.createElement(React.Fragment, null,
+                            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                                React.createElement("span", { style: { fontSize: 12, color: "#555" } }, "Length"),
+                                React.createElement("input", { style: { ...inputStyle, width: 80 }, type: "number", step: "0.1", min: "0.5", value: form.swimoutLength, onChange: e => set("swimoutLength", e.target.value), placeholder: "m" })),
+                            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                                React.createElement("span", { style: { fontSize: 12, color: "#555" } }, "Width"),
+                                React.createElement("input", { style: { ...inputStyle, width: 80 }, type: "number", step: "0.05", min: "0.3", value: form.swimoutWidth, onChange: e => set("swimoutWidth", e.target.value), placeholder: "m" })))))),
+                React.createElement(Field, { label: "Beams", full: true },
+                    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" } },
+                        React.createElement("label", { style: checkboxRowStyle },
+                            React.createElement("input", { type: "checkbox", checked: form.hasBeams, onChange: () => toggle("hasBeams") }),
+                            "Non-standard beams (above 180mm)"),
+                        form.hasBeams && (React.createElement(React.Fragment, null,
+                            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                                React.createElement("span", { style: { fontSize: 12, color: "#555" } }, "Length:"),
+                                React.createElement("input", { style: { ...inputStyle, width: 90 }, type: "number", min: "0", step: "0.5", value: form.beamLength, onChange: e => set("beamLength", e.target.value), placeholder: "m" }),
+                                React.createElement("span", { style: { fontSize: 12, color: "#555" } }, "m")),
+                            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                                React.createElement("span", { style: { fontSize: 12, color: "#555" } }, "Width:"),
+                                React.createElement("select", { style: selectStyle, value: form.beamWidth, onChange: e => set("beamWidth", e.target.value) },
+                                    React.createElement("option", { value: "300" }, "300mm"),
+                                    React.createElement("option", { value: "350" }, "350mm"),
+                                    React.createElement("option", { value: "400" }, "400mm"),
+                                    React.createElement("option", { value: "450" }, "450mm"),
+                                    React.createElement("option", { value: "500" }, "500mm"))),
+                            form.beamLength && (() => {
+                                const beamSqm = parseFloat(form.beamLength) * (parseFloat(form.beamWidth) / 1000);
+                                return React.createElement("span", { style: { fontSize: 12, color: "#1a56b0", fontWeight: 600 } },
+                                    beamSqm.toFixed(2),
+                                    " Sq.m \u00D7 $800 = +$",
+                                    Math.round(beamSqm * 800).toLocaleString("en-AU"),
+                                    " added to pool price");
+                            })()))))),
+            React.createElement(Field, { label: "Spa" },
+                React.createElement("label", { style: { ...checkboxRowStyle, opacity: form.proposalType === "poolspa" ? 0.6 : 1 } },
+                    React.createElement("input", { type: "checkbox", checked: form.hasSpa, disabled: form.proposalType === "poolspa", onChange: () => toggle("hasSpa") }),
+                    "Include spa ",
+                    form.proposalType === "poolspa" && React.createElement("span", { style: { fontSize: 11, color: "#e05c3a", fontWeight: 600 } }, "\u2014 Auto (Pool & Spa)"))),
+            form.hasSpa && React.createElement(Field, { label: "Spa Type / Size" },
+                React.createElement("select", { style: selectStyle, value: form.spaType, onChange: e => set("spaType", e.target.value) },
+                    React.createElement("option", { value: "square18" }, "Square 1.8 x 1.8m"),
+                    React.createElement("option", { value: "square22" }, "Square 2.2 x 2.2m"),
+                    React.createElement("option", { value: "squareGutter" }, "Square with Gutter"),
+                    React.createElement("option", { value: "squareRaised" }, "Square & Raised 300mm"),
+                    React.createElement("option", { value: "round20" }, "Round 2.0m"),
+                    React.createElement("option", { value: "round25" }, "Round 2.5m"),
+                    React.createElement("option", { value: "roundGutter" }, "Round with Gutter"),
+                    React.createElement("option", { value: "roundGutterRaised" }, "Round with Gutter & Raised 300mm"))),
+            form.hasSpa && React.createElement(Field, { label: "Air Blower" },
+                React.createElement("label", { style: checkboxRowStyle },
+                    React.createElement("input", { type: "checkbox", checked: form.hasAirBlower, onChange: () => toggle("hasAirBlower") }),
+                    "Include Air Blower ($1,810)")),
+            React.createElement(Field, { label: "Automation" }, form.hasSpa ? (React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                React.createElement("label", { style: { ...checkboxRowStyle, opacity: 0.6 } },
+                    React.createElement("input", { type: "checkbox", checked: true, disabled: true }),
+                    "Include"),
+                React.createElement("span", { style: { fontSize: 11, color: "#e05c3a", fontWeight: 600 } }, "Auto \u2014 required with Spa"))) : (React.createElement("label", { style: checkboxRowStyle },
+                React.createElement("input", { type: "checkbox", checked: form.hasAutomation, onChange: () => toggle("hasAutomation") }),
+                " Include"))),
+            (form.hasAutomation || form.hasSpa) && React.createElement(Field, { label: "Automation System" },
+                React.createElement("select", { style: selectStyle, value: form.automationType, onChange: e => set("automationType", e.target.value) },
+                    React.createElement("option", { value: "intelliCenter" }, "Pentair IntelliCentre PNP8 + Phone Control"),
+                    React.createElement("option", { value: "aquaLink" }, "AquaLink PS8 PDA + iAquaLink Phone Control"))))
+            ,
+                React.createElement(Section, { title: "Site Variables" },
+                    React.createElement(Field, { label: "Project Location" },
+                        React.createElement("select", { style: selectStyle, value: form.projectLocation, onChange: e => set("projectLocation", e.target.value) },
+                            React.createElement("option", { value: "metro" }, "Metro"),
+                            React.createElement("option", { value: "peninsulaPorSor" }, "Peninsula \u2014 Portsea / Sorrento"),
+                            React.createElement("option", { value: "peninsulaBlaSho" }, "Peninsula \u2014 Blairgowrie / Shoreham"),
+                            React.createElement("option", { value: "country" }, "Country Project"))),
+                    React.createElement(Field, { label: "Access Width (mm)" },
+                        React.createElement("select", { style: selectStyle, value: form.accessWidth, onChange: e => set("accessWidth", e.target.value) },
+                            React.createElement("option", { value: "1800" }, "\u2264 1800mm \u2014 Very Tight (+15%)"),
+                            React.createElement("option", { value: "2200" }, "2000\u20132450mm \u2014 Ok (+5%)"),
+                            React.createElement("option", { value: "2700" }, "2500\u20132950mm \u2014 Good (+0%)"),
+                            React.createElement("option", { value: "3000" }, "3000mm+ \u2014 Great (\u22122.5%)"),
+                            React.createElement("option", { value: "acreage" }, "Acreage (\u22125%)"))),
+                    React.createElement(Field, { label: "Soil Class" },
+                        React.createElement("select", { style: selectStyle, value: form.soilClass, onChange: e => set("soilClass", e.target.value) },
+                            React.createElement("option", { value: "A" }, "A \u2014 Sand/Rock (best)"),
+                            React.createElement("option", { value: "S" }, "S \u2014 Slightly reactive clay"),
+                            React.createElement("option", { value: "M" }, "M \u2014 Moderately reactive clay"),
+                            React.createElement("option", { value: "H" }, "H \u2014 Highly reactive (+$3,000)"),
+                            React.createElement("option", { value: "E" }, "E \u2014 Extremely reactive (+$6,500)"),
+                            React.createElement("option", { value: "P" }, "P \u2014 Problem soils"))),
+                    React.createElement(Field, { label: "Engineering Plans" },
+                        React.createElement("select", { style: selectStyle, value: form.engineeringPlans, onChange: e => set("engineeringPlans", e.target.value) },
+                            React.createElement("option", { value: "byEnki" }, "By Enkipools (included)"),
+                            React.createElement("option", { value: "byOthers" }, "By Others (\u2212$1,500)"))),
+                    React.createElement(Field, { label: "Out of Ground" },
+                        React.createElement("label", { style: checkboxRowStyle },
+                            React.createElement("input", { type: "checkbox", checked: form.outOfGround, onChange: () => toggle("outOfGround") }),
+                            "Pool is out of ground")),
+                    form.engineeringPlans === "byOthers" && (React.createElement(Field, { label: "" },
+                        React.createElement("div", { style: { padding: "8px 12px", background: "#f0fff4", border: "1px solid #27ae60", borderRadius: 7, fontSize: 12, color: "#1a6b3a" } },
+                            "Engineering plans by others \u2014 ",
+                            React.createElement("strong", null, "$1,500"),
+                            " deducted from Swimming Pool price"))))
+                    ,
+                        React.createElement(Section, { title: "Excavation" },
+                            React.createElement(Field, { label: "Site Prep or Demolition", full: true },
+                                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
+                                    React.createElement("label", { style: checkboxRowStyle },
+                                        React.createElement("input", { type: "checkbox", checked: form.sitePrepDemolition, onChange: () => toggle("sitePrepDemolition") }),
+                                        "Required"),
+                                    form.sitePrepDemolition && (React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 4 } },
+                                        React.createElement("span", { style: { fontSize: 14, fontWeight: 600, color: "#555" } }, "$"),
+                                        React.createElement("input", { style: { ...inputStyle, width: 160, borderColor: "#f5a623", background: "#fffbf0" }, type: "number", min: "0", step: "1000", value: form.sitePrepDemolitionCost, onChange: e => set("sitePrepDemolitionCost", e.target.value), placeholder: "0" }))))),
+                            React.createElement(Field, { label: "Soil Removed from Site" },
+                                React.createElement("select", { style: selectStyle, value: form.soilRemoved, onChange: e => set("soilRemoved", e.target.value) },
+                                    React.createElement("option", { value: "yes" }, "Yes"),
+                                    React.createElement("option", { value: "no" }, "No"))),
+                            React.createElement(Field, { label: "Qty Trucks Required" },
+                                React.createElement("select", { style: selectStyle, value: form.truckQty, onChange: e => set("truckQty", e.target.value) },
+                                    React.createElement("option", { value: "0" }, "0 Trucks (\u2212$2,500 from pool price)"),
+                                    React.createElement("option", { value: "1" }, "1 Truck (\u2212$1,750 from pool price)"),
+                                    React.createElement("option", { value: "2" }, "2 Trucks \u2014 1 day (included in pool price)"),
+                                    React.createElement("option", { value: "3" }, "3 Trucks \u2014 1 day (+$1,750 added to pool price)"))),
+                            React.createElement(Field, { label: "Tracked Loader (Posi or Wheeled Dumper)" },
+                                React.createElement("label", { style: checkboxRowStyle },
+                                    React.createElement("input", { type: "checkbox", checked: form.trackedLoader, onChange: () => toggle("trackedLoader") }),
+                                    "Include ($1,650/day)")),
+                            form.trackedLoader && (React.createElement(Field, { label: "Tracked Loader (Posi or Wheeled Dumper) Days" },
+                                React.createElement("input", { style: inputStyle, type: "number", min: "1", value: form.trackedLoaderDays, onChange: e => set("trackedLoaderDays", e.target.value), placeholder: "1" }))),
+                            React.createElement(Field, { label: "Tipping Loads Qty", full: true },
+                                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
+                                    React.createElement("input", { style: { ...inputStyle, borderColor: parseInt(form.tippingLoads) > 8 ? "#e05c3a" : "#dde3ef" }, type: "number", min: "0", value: form.tippingLoads, onChange: e => set("tippingLoads", e.target.value), placeholder: "8" }),
+                                    parseInt(form.tippingLoads) > 8 && (React.createElement("span", { style: { fontSize: 12, color: "#e05c3a", whiteSpace: "nowrap", fontWeight: 600 } },
+                                        "+",
+                                        parseInt(form.tippingLoads) - 8,
+                                        " loads \u00D7 $300 = $",
+                                        ((parseInt(form.tippingLoads) - 8) * 300).toLocaleString("en-AU"))),
+                                    parseInt(form.tippingLoads) <= 8 && form.tippingLoads && (React.createElement("span", { style: { fontSize: 12, color: "#27ae60", whiteSpace: "nowrap" } }, "Within included 8 loads")))),
+                            React.createElement(Field, { label: "Soil Left On Site (credit)", full: true },
+                                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12 } },
+                                    React.createElement("label", { style: checkboxRowStyle },
+                                        React.createElement("input", { type: "checkbox", checked: form.soilOnSite, onChange: () => toggle("soilOnSite") }),
+                                        "Soil to remain on site"),
+                                    form.soilOnSite && (React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                                        React.createElement("input", { style: { ...inputStyle, width: 80, borderColor: "#27ae60" }, type: "number", min: "0", value: form.soilLoadsOnSite, onChange: e => set("soilLoadsOnSite", e.target.value), placeholder: "Loads" }),
+                                        React.createElement("span", { style: { fontSize: 12, color: "#27ae60", fontWeight: 600, whiteSpace: "nowrap" } },
+                                            "loads saved",
+                                            form.soilLoadsOnSite && ` — credit: −$${(parseFloat(form.soilLoadsOnSite) * 180).toLocaleString("en-AU")}`))))),
+                            React.createElement(Field, { label: "Rock or Hard Ground", full: true },
+                                React.createElement("select", { style: selectStyle, value: form.rockHardGround, onChange: e => set("rockHardGround", e.target.value) },
+                                    React.createElement("option", { value: "0" }, "Not applicable"),
+                                    React.createElement("option", { value: "3000" }, "$3,000 \u2014 Provisional Sum"),
+                                    React.createElement("option", { value: "6500" }, "$6,500 \u2014 Provisional Sum"),
+                                    React.createElement("option", { value: "10000" }, "$10,000 \u2014 Provisional Sum"))),
+                            React.createElement(Field, { label: "Road Closure" },
+                                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" } },
+                                    React.createElement("label", { style: checkboxRowStyle },
+                                        React.createElement("input", { type: "checkbox", checked: form.roadClosure, onChange: () => toggle("roadClosure") }),
+                                        "Required"),
+                                    form.roadClosure && (React.createElement(React.Fragment, null,
+                                        React.createElement("select", { style: selectStyle, value: form.roadClosureType, onChange: e => set("roadClosureType", e.target.value) },
+                                            React.createElement("option", { value: "half" }, "1/2 Day \u2014 $1,500"),
+                                            React.createElement("option", { value: "full" }, "Full Day \u2014 $2,500")),
+                                        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 4 } },
+                                            React.createElement("span", { style: { fontSize: 12, color: "#555" } }, "Qty:"),
+                                            React.createElement("input", { style: { ...inputStyle, width: 70 }, type: "number", min: "1", step: "1", value: form.roadClosureQty, onChange: e => set("roadClosureQty", e.target.value), placeholder: "1" })),
+                                        (() => {
+                                            const rate = form.roadClosureType === "full" ? 2500 : 1500;
+                                            const qty = parseInt(form.roadClosureQty) || 1;
+                                            return React.createElement("span", { style: { fontSize: 12, color: "#1a56b0", fontWeight: 600 } },
+                                                "= $",
+                                                (rate * qty).toLocaleString("en-AU"),
+                                                " added to pool price");
+                                        })())))),
+                            React.createElement(Field, { label: "Driveway Protection" },
+                                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" } },
+                                    React.createElement("label", { style: checkboxRowStyle },
+                                        React.createElement("input", { type: "checkbox", checked: form.drivewayProtection, onChange: () => toggle("drivewayProtection") }),
+                                        "Required"),
+                                    form.drivewayProtection && (React.createElement("select", { style: selectStyle, value: form.drivewayProtectionSize, onChange: e => set("drivewayProtectionSize", e.target.value) },
+                                        React.createElement("option", { value: "10" }, "10m @ 2400mm \u2014 $950"),
+                                        React.createElement("option", { value: "15" }, "15m @ 2400mm \u2014 $1,100"),
+                                        React.createElement("option", { value: "20" }, "20m @ 2400mm \u2014 $1,200"),
+                                        React.createElement("option", { value: "25" }, "25m @ 2400mm \u2014 $1,300"),
+                                        React.createElement("option", { value: "30" }, "30m @ 2400mm \u2014 $1,500"),
+                                        React.createElement("option", { value: "40" }, "40m @ 2400mm \u2014 $1,800"))))),
+                            React.createElement(Field, { label: "Traffic Management" },
+                                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
+                                    React.createElement("label", { style: checkboxRowStyle },
+                                        React.createElement("input", { type: "checkbox", checked: form.trafficMgmt, onChange: () => toggle("trafficMgmt") }),
+                                        "Required"),
+                                    form.trafficMgmt && (React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 4 } },
+                                        React.createElement("span", { style: { fontSize: 14, fontWeight: 600, color: "#555" } }, "$"),
+                                        React.createElement("input", { style: { ...inputStyle, width: 130, borderColor: "#f5a623", background: "#fffbf0" }, type: "number", min: "0", value: form.trafficMgmtCostInput, onChange: e => set("trafficMgmtCostInput", e.target.value), placeholder: "0.00" }))))))
+                            ,
+                                React.createElement(Section, { title: "Pool Price Variables" },
+                                    React.createElement(Field, { label: "Formwork", full: true },
+                                        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" } },
+                                            React.createElement("label", { style: checkboxRowStyle },
+                                                React.createElement("input", { type: "checkbox", checked: form.hasFormwork, onChange: () => toggle("hasFormwork") }),
+                                                "Include"),
+                                            form.hasFormwork && (React.createElement(React.Fragment, null,
+                                                React.createElement("select", { style: { ...selectStyle, width: 280 }, value: form.formworkType, onChange: e => set("formworkType", e.target.value) },
+                                                    React.createElement("option", { value: "topBond" }, "Top Bond / Plinth \u2014 $65/lm (incl. in pool price)"),
+                                                    React.createElement("option", { value: "lightDuty" }, "Shoring / Light Duty \u2014 $120/Sq.m (additional)"),
+                                                    React.createElement("option", { value: "mediumDuty" }, "Medium Duty \u2014 $145/Sq.m (additional)"),
+                                                    React.createElement("option", { value: "heavyDuty" }, "Heavy Duty \u2014 Infinity Wall \u2014 $200/Sq.m (additional)")),
+                                                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                                                    React.createElement("input", { style: { ...inputStyle, width: 90 }, type: "number", min: "0", step: "0.5", value: form.formworkSqm, onChange: e => set("formworkSqm", e.target.value), placeholder: "Sq.m / lm" }),
+                                                    form.formworkSqm && (() => {
+                                                        const qty = parseFloat(form.formworkSqm) || 0;
+                                                        const rates = { topBond: 65, lightDuty: 120, mediumDuty: 145, heavyDuty: 200 };
+                                                        const rate = rates[form.formworkType] || 0;
+                                                        const cost = Math.round(qty * rate);
+                                                        const isIncluded = form.formworkType === "topBond";
+                                                        return React.createElement("span", { style: { fontSize: 12, color: isIncluded ? "#27ae60" : "#e05c3a", fontWeight: 600, whiteSpace: "nowrap" } },
+                                                            "= $",
+                                                            cost.toLocaleString("en-AU"),
+                                                            " ",
+                                                            isIncluded ? "(incl. in pool)" : "(added to pool)");
+                                                    })()))))),
+                                    React.createElement(Field, { label: "Foundations \u2014 Type" },
+                                        React.createElement("select", { style: selectStyle, value: form.foundationsType, onChange: e => set("foundationsType", e.target.value) },
+                                            React.createElement("option", { value: "underPoolPiers" }, "Under Pool Piers"),
+                                            React.createElement("option", { value: "shallowProppedPiers" }, "Shallow Propped Piers"),
+                                            React.createElement("option", { value: "protectionPiers" }, "Protection Piers"))),
+                                    React.createElement(Field, { label: "Foundations \u2014 Provisional Sum ($)", full: true },
+                                        React.createElement("input", { style: { ...inputStyle, borderColor: "#f5a623", background: "#fffbf0" }, type: "number", min: "0", step: "1000", value: form.foundationsPS, onChange: e => set("foundationsPS", e.target.value), placeholder: "Enter $ amount (increments of $1,000)" })),
+                                    React.createElement(Field, { label: "Pipe Run \u2014 Total Distance (lineal m)", full: true },
+                                        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
+                                            React.createElement("input", { style: { ...inputStyle, borderColor: form.pipeRunDistance && parseFloat(form.pipeRunDistance) > 10 ? "#e05c3a" : "#dde3ef" }, type: "number", min: "0", value: form.pipeRunDistance, onChange: e => set("pipeRunDistance", e.target.value), placeholder: "Enter total meters \u2014 cost applies above 10m" }),
+                                            form.pipeRunDistance && parseFloat(form.pipeRunDistance) > 10 && (React.createElement("span", { style: { fontSize: 12, color: "#e05c3a", whiteSpace: "nowrap", fontWeight: 600 } },
+                                                "+",
+                                                parseFloat(form.pipeRunDistance) - 10,
+                                                "m \u00D7 $450 = $",
+                                                ((parseFloat(form.pipeRunDistance) - 10) * 450).toLocaleString("en-AU"))))))
+                                    ,
+                                        React.createElement(Section, { title: "Infinity Edge" },
+                                            React.createElement(Field, { label: "Infinity Edge", full: true },
+                                                React.createElement("label", { style: checkboxRowStyle },
+                                                    React.createElement("input", { type: "checkbox", checked: form.infinityEdge, onChange: () => toggle("infinityEdge") }),
+                                                    "Include infinity edge + balance tank")),
+                                            form.infinityEdge && (React.createElement(React.Fragment, null,
+                                                React.createElement(Field, { label: "Infinity Edge Detail" },
+                                                    React.createElement("select", { style: selectStyle, value: form.infinityEdgeDetail, onChange: e => set("infinityEdgeDetail", e.target.value) },
+                                                        React.createElement("option", { value: "reverseEdge" }, "Reverse Edge (Towards pool)"),
+                                                        React.createElement("option", { value: "forwardEdge" }, "Forward Edge (Away from pool)"),
+                                                        React.createElement("option", { value: "curvedEdge" }, "Curved Edge (Curved away from pool)"))),
+                                                React.createElement(Field, { label: "Interior Finish" },
+                                                    React.createElement("select", { style: selectStyle, value: form.infinityEdgeInteriorFinish, onChange: e => set("infinityEdgeInteriorFinish", e.target.value) },
+                                                        React.createElement("option", { value: "grating" }, "Grating"),
+                                                        React.createElement("option", { value: "tiled" }, "Tiled"))),
+                                                React.createElement(Field, { label: "Infinity Edge Length (m)" },
+                                                    React.createElement("input", { style: inputStyle, type: "number", min: "0", step: "0.1", value: form.infinityEdgeLength || form.poolLength || "", onChange: e => set("infinityEdgeLength", e.target.value), placeholder: form.poolLength || "e.g. 8" })),
+                                                React.createElement(Field, { label: "Balance Tank Length (m)" },
+                                                    React.createElement("input", { style: inputStyle, type: "number", min: "0", step: "0.1", value: form.balanceTankLength || form.poolLength || "", onChange: e => set("balanceTankLength", e.target.value), placeholder: form.poolLength || "e.g. 8" })),
+                                                React.createElement(Field, { label: "Balance Tank Width (m)" },
+                                                    React.createElement("input", { style: inputStyle, type: "number", min: "0", step: "0.1", value: form.balanceTankWidth || "0.8", onChange: e => set("balanceTankWidth", e.target.value), placeholder: "0.8" })),
+                                                React.createElement(Field, { label: "Balance Tank Depth (m)" },
+                                                    React.createElement("input", { style: inputStyle, type: "number", min: "0", step: "0.1", value: form.balanceTankDepth || "0.8", onChange: e => set("balanceTankDepth", e.target.value), placeholder: "0.8" })),
+                                                React.createElement(Field, { label: "Infinity Edge Wall Height (m) \u2014 Above Balance Tank" },
+                                                    React.createElement("input", { style: inputStyle, type: "number", min: "0", step: "0.1", value: form.infinityEdgeWallHeight || "1.2", onChange: e => set("infinityEdgeWallHeight", e.target.value), placeholder: "1.2" })))))
+                                            ,
+                                                React.createElement(Section, { title: "Interior Finish" },
+                                                    React.createElement(Field, { label: "Interior Type" },
+                                                        React.createElement("select", { style: selectStyle, value: form.interior, onChange: e => set("interior", e.target.value) },
+                                                            React.createElement("option", { value: "ceramic" }, "Ceramic Tile 50x50mm"),
+                                                            React.createElement("option", { value: "ceramic25mm" }, "Ceramic Tile 25mm (+$35/Sq.m)"),
+                                                            React.createElement("option", { value: "glass" }, "Glass Mosaic Tile"),
+                                                            React.createElement("option", { value: "aquaneon" }, "AquaNeon Interior (\u2212$145/Sq.m)"))),
+                                                    form.interior === "ceramic25mm" && (React.createElement(Field, { label: "", full: true },
+                                                        React.createElement("div", { style: { padding: "10px 14px", background: "#fff8e6", border: "1px solid #f5c842", borderRadius: 8, fontSize: 12, color: "#7a4a00" } },
+                                                            React.createElement("strong", null, "25mm Ceramic selected"),
+                                                            " \u2014 surcharge applied to full tiled surface (floor + walls). ",
+                                                            (() => {
+                                                                const l = parseFloat(form.poolLength || 8), w = parseFloat(form.poolWidth || 4);
+                                                                const d = (parseFloat(form.depthShallow || 1.2) + parseFloat(form.depthDeep || 1.8)) / 2 + 0.1;
+                                                                const area = (l * w) + (2 * (l + w) * d);
+                                                                return `${area.toFixed(1)} Sq.m × $35 = +$${(area * 35).toLocaleString("en-AU", { maximumFractionDigits: 0 })}`;
+                                                            })()))),
+                                                    form.interior === "aquaneon" && (React.createElement(Field, { label: "", full: true },
+                                                        React.createElement("div", { style: { padding: "10px 14px", background: "#eef6ff", border: "1px solid #b3d4f5", borderRadius: 8, fontSize: 12, color: "#0d2d6b" } },
+                                                            React.createElement("strong", null, "AquaNeon selected"),
+                                                            " \u2014 Swimming Pool base price reduced by ",
+                                                            React.createElement("strong", null, "$145/Sq.m"),
+                                                            " (",
+                                                            (() => { const s = parseFloat(form.poolLength || 8) * parseFloat(form.poolWidth || 4); return `${s.toFixed(1)} Sq.m × $145 = −$${(s * 145).toLocaleString("en-AU")}`; })(),
+                                                            ")"))),
+                                                    React.createElement(Field, { label: "Waterproof Membrane" },
+                                                        React.createElement("label", { style: checkboxRowStyle },
+                                                            React.createElement("input", { type: "checkbox", checked: form.hasMembrane, onChange: () => toggle("hasMembrane") }),
+                                                            " Include ($90/sqm of pool surface)")),
+                                                    React.createElement(Field, { label: "Waterproof Membrane \u2014 Area Only (Spa, One Wall etc)", full: true },
+                                                        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
+                                                            React.createElement("input", { style: { ...inputStyle, width: 100 }, type: "number", min: "0", step: "0.1", value: form.membraneAreaOnly, onChange: e => set("membraneAreaOnly", e.target.value), placeholder: "Sq.m" }),
+                                                            React.createElement("input", { style: { ...inputStyle, width: 160 }, type: "text", value: form.membraneAreaOnlyType, onChange: e => set("membraneAreaOnlyType", e.target.value), placeholder: "Type (e.g. Spa, One Wall)" }),
+                                                            React.createElement("span", { style: { fontSize: 12, color: "#555" } }, "@ $90/Sq.m"),
+                                                            parseFloat(form.membraneAreaOnly) > 0 && (React.createElement("span", { style: { fontSize: 12, color: "#1a56b0", fontWeight: 600 } },
+                                                                "= $",
+                                                                Math.round(parseFloat(form.membraneAreaOnly) * 90).toLocaleString("en-AU"),
+                                                                " added to pool price")))),
+                                                    React.createElement(Field, { label: "Tile Supply P.C. Rate ($/Sq.m)", full: true },
+                                                        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
+                                                            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 4 } },
+                                                                React.createElement("span", { style: { fontSize: 14, fontWeight: 600, color: "#555" } }, "$"),
+                                                                React.createElement("input", { style: { ...inputStyle, width: 100, borderColor: parseFloat(form.tilePCRate) > 55 ? "#e05c3a" : "#dde3ef" }, type: "number", min: "0", step: "1", value: form.tilePCRate, onChange: e => set("tilePCRate", e.target.value), placeholder: "55.00" })),
+                                                            React.createElement("span", { style: { fontSize: 12, color: "#888" } }, "per Sq.m \u2014 base $55/Sq.m incl. in pool price"),
+                                                            parseFloat(form.tilePCRate) > 55 && (() => {
+                                                                const l = parseFloat(form.poolLength || 8), w = parseFloat(form.poolWidth || 4);
+                                                                const d = (parseFloat(form.depthShallow || 1.2) + parseFloat(form.depthDeep || 1.8)) / 2 + 0.1;
+                                                                const area = ((l * w) + (2 * (l + w) * d)) * 1.08;
+                                                                const extra = Math.round(area * (parseFloat(form.tilePCRate) - 55));
+                                                                return React.createElement("span", { style: { fontSize: 12, color: "#e05c3a", fontWeight: 600, whiteSpace: "nowrap" } },
+                                                                    "+$",
+                                                                    extra.toLocaleString("en-AU"),
+                                                                    " added to pool price");
+                                                            })())))
+                                                    ,
+                                                        React.createElement(Section, { title: "External Surfaces" },
+                                                            React.createElement(Field, { label: "External Surface Area (Sq.m)" },
+                                                                React.createElement("input", { style: inputStyle, type: "number", min: "0", step: "0.1", value: form.externalSurfacesSqm, onChange: e => set("externalSurfacesSqm", e.target.value), placeholder: "e.g. 45" })),
+                                                            React.createElement(Field, { label: "Type of Finish" },
+                                                                React.createElement("input", { style: inputStyle, type: "text", value: form.externalSurfacesType, onChange: e => set("externalSurfacesType", e.target.value), placeholder: "e.g. Render, Stone Cladding, Tiles" })),
+                                                            React.createElement(Field, { label: "Cost ($)", full: true },
+                                                                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                                                                    React.createElement("span", { style: { fontSize: 14, fontWeight: 600, color: "#555" } }, "$"),
+                                                                    React.createElement("input", { style: inputStyle, type: "number", min: "0", value: form.externalSurfacesCost, onChange: e => set("externalSurfacesCost", e.target.value), placeholder: "Enter cost \u2014 added to Swimming Pool price" })),
+                                                                parseFloat(form.externalSurfacesCost) > 0 && (React.createElement("div", { style: { marginTop: 6, fontSize: 12, color: "#1a56b0" } },
+                                                                    "$",
+                                                                    parseFloat(form.externalSurfacesCost).toLocaleString("en-AU"),
+                                                                    " will be added to Swimming Pool price"))))
+                                                            ,
+                                                                React.createElement(Section, { title: "Filtration & Equipment" },
+                                                                    React.createElement(Field, { label: "Filter" },
+                                                                        React.createElement("select", { style: selectStyle, value: form.filterModel, onChange: e => set("filterModel", e.target.value) },
+                                                                            React.createElement("option", { value: "Tagelus100D" }, "Pentair Tagelus 100D"),
+                                                                            React.createElement("option", { value: "25inch" }, "Pentair 25in"))),
+                                                                    React.createElement(Field, { label: "Filter Pump" },
+                                                                        React.createElement("select", { style: selectStyle, value: form.pumpModel, onChange: e => set("pumpModel", e.target.value) },
+                                                                            React.createElement("option", { value: "intelliflo" }, "Pentair Intelliflo VS"),
+                                                                            React.createElement("option", { value: "enviromax" }, "Pentair EnviroMax VS"),
+                                                                            React.createElement("option", { value: "whisperflo15" }, "WhisperFlo 1.5Hp"))),
+                                                                    React.createElement(Field, { label: "Salt Chlorinator" },
+                                                                        React.createElement("select", { style: selectStyle, value: form.chlorinator, onChange: e => set("chlorinator", e.target.value) },
+                                                                            React.createElement("option", { value: "SWC25" }, "Pool Controls SWC25 + Auto pH"),
+                                                                            React.createElement("option", { value: "SWC35" }, "Pool Controls SWC35 + Auto pH"),
+                                                                            React.createElement("option", { value: "SWC45" }, "Pool Controls SWC45 + Auto pH"),
+                                                                            React.createElement("option", { value: "intelliChlor60" }, "Pentair IntelliChlor IC60 + IntelliChem"),
+                                                                            React.createElement("option", { value: "intelliChlor40" }, "Pentair IntelliChlor IC40 + IntelliChem"))),
+                                                                    React.createElement(Field, { label: "Water Refill" },
+                                                                        React.createElement("select", { style: selectStyle, value: form.autofillerType, onChange: e => set("autofillerType", e.target.value) },
+                                                                            React.createElement("option", { value: "paralevel" }, "Paramount Paralevel"),
+                                                                            React.createElement("option", { value: "aquafill" }, "AquaFill"))),
+                                                                    React.createElement(Field, { label: "LED Lights", full: true },
+                                                                        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" } },
+                                                                            React.createElement("select", { style: { ...selectStyle, width: 260 }, value: form.lightType, onChange: e => set("lightType", e.target.value) },
+                                                                                React.createElement("option", { value: "WN9" }, "Spa Electric WN9 Quantum"),
+                                                                                React.createElement("option", { value: "WN9Multi" }, "Spa Electric WN9 Quantum Multicolour"),
+                                                                                React.createElement("option", { value: "atomEM" }, "Spa Electric Atom EM"),
+                                                                                React.createElement("option", { value: "atomEMMulti" }, "Spa Electric Atom EM Multicolour")),
+                                                                            React.createElement("input", { style: { ...inputStyle, width: 100 }, type: "number", value: form.lightCount, onChange: e => set("lightCount", e.target.value), placeholder: `Auto (≈${Math.max(2, Math.round(parseFloat(form.poolLength || 9) / 3)) + (form.hasSpa ? 1 : 0)} lights${form.hasSpa ? " incl. spa" : ""})` }))),
+                                                                    React.createElement(Field, { label: "In-Floor Cleaning" },
+                                                                        React.createElement("label", { style: checkboxRowStyle },
+                                                                            React.createElement("input", { type: "checkbox", checked: form.hasInFloor, onChange: () => toggle("hasInFloor") }),
+                                                                            " Paramount PCC2000")))
+                                                                    ,
+                                                                        React.createElement(Section, { title: "Heating" },
+                                                                            React.createElement(Field, { label: "Solar Heating" },
+                                                                                React.createElement("label", { style: checkboxRowStyle },
+                                                                                    React.createElement("input", { type: "checkbox", checked: form.hasSolar, onChange: () => toggle("hasSolar") }),
+                                                                                    " Include solar")),
+                                                                            form.hasSolar && React.createElement(Field, { label: "Solar Sqm (auto if blank)" },
+                                                                                React.createElement("input", { style: inputStyle, type: "number", value: form.solarSqm, onChange: e => set("solarSqm", e.target.value), placeholder: "Auto (100% of pool area)" })),
+                                                                            form.hasSolar && React.createElement(Field, { label: "Solar Location", full: true },
+                                                                                React.createElement("input", { style: inputStyle, value: form.solarLocation, onChange: e => set("solarLocation", e.target.value), placeholder: "e.g. On House Roof \u2014 North Facing" })),
+                                                                            React.createElement(Field, { label: "Gas Heater" }, form.proposalType === "poolspa" ? (React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                                                                                React.createElement("label", { style: { ...checkboxRowStyle, opacity: 0.6 } },
+                                                                                    React.createElement("input", { type: "checkbox", checked: true, disabled: true }),
+                                                                                    "Pentair MasterTemp 400"),
+                                                                                React.createElement("span", { style: { fontSize: 11, color: "#e05c3a", fontWeight: 600 } }, "Auto \u2014 required for Pool & Spa"))) : (React.createElement("label", { style: checkboxRowStyle },
+                                                                                React.createElement("input", { type: "checkbox", checked: form.hasGasHeater, onChange: () => toggle("hasGasHeater") }),
+                                                                                " Pentair MasterTemp 400"))),
+                                                                            React.createElement(Field, { label: "Heat Pump", full: true },
+                                                                                React.createElement("select", { style: selectStyle, value: form.heatPump, onChange: e => set("heatPump", e.target.value) }, Object.keys(R.heatPumps).map(hp => React.createElement("option", { key: hp }, hp)))),
+                                                                            form.heatPump !== "None" && (React.createElement(Field, { label: "Wall Mounting" },
+                                                                                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
+                                                                                    React.createElement("label", { style: checkboxRowStyle },
+                                                                                        React.createElement("input", { type: "checkbox", checked: form.heatPumpWallMount, onChange: () => toggle("heatPumpWallMount") }),
+                                                                                        "Required"),
+                                                                                    form.heatPumpWallMount && (React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 4 } },
+                                                                                        React.createElement("span", { style: { fontSize: 14, fontWeight: 600, color: "#555" } }, "$"),
+                                                                                        React.createElement("input", { style: { ...inputStyle, width: 130, borderColor: "#f5a623", background: "#fffbf0" }, type: "number", min: "0", value: form.heatPumpWallMountCost, onChange: e => set("heatPumpWallMountCost", e.target.value), placeholder: "0.00" })))))))
+                                                                            ,
+                                                                                React.createElement("div", { style: rowStyle },
+                                                                                    React.createElement("button", { style: btnPrimary, onClick: run }, "Calculate Estimate \u2192")))),
+        view === "result" && result && (React.createElement("div", { style: cardStyle },
+        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 } },
+            React.createElement("div", null,
+                React.createElement("div", { style: { fontSize: 17, fontWeight: 800, color: "#0d2d6b" } }, "Summary"),
+                React.createElement("div", { style: { fontSize: 12, color: "#888" } },
+                    form.clientFirstName,
+                    " ",
+                    form.clientSurname,
+                    " \u00B7 ",
+                    form.clientAddress,
+                    ", ",
+                    form.clientSuburb)),
+            React.createElement("div", { style: { display: "flex", gap: 8 } },
+                React.createElement("button", { style: btnSecondary, onClick: () => setView("proposal") }, "\u2190 Quotation"),
+                React.createElement("button", { style: btnSecondary, onClick: () => setView("estimator") }, "New Estimate"))),
+        (() => {
+            // Recalculate all proposal values inline for summary
+            const L = parseFloat(form.poolLength || 9), W = parseFloat(form.poolWidth || 4);
+            const poolDiamS = parseFloat(form.poolDiameter) || L;
+            const sqm = form.poolShape === "Round"
+                ? Math.PI * Math.pow(poolDiamS / 2, 2)
+                : L * W;
+            const dShallow = parseFloat(form.depthShallow || 1.2), dDeep = parseFloat(form.depthDeep || 1.8);
+            const avgDepthTile = (dShallow + dDeep) / 2 + 0.1;
+            const perim = form.poolShape === "Round" ? Math.PI * poolDiamS : 2 * (L + W);
+            const totalTiledArea = sqm + perim * avgDepthTile;
+            const aquaNeonDisc = form.interior === "aquaneon" ? sqm * 145 : 0;
+            const tile25Surcharge = form.interior === "ceramic25mm" ? totalTiledArea * 35 : 0;
+            const swimoutSqmS = form.hasSwimout ? parseFloat(form.swimoutLength || 3) * parseFloat(form.swimoutWidth || 0.45) : 0;
+            const swimoutCostS = Math.round(swimoutSqmS * PP.poolVariables.swimoutPerSqm);
+            const soilNotRemovedCreditS = form.soilRemoved === "no" ? -(8 * 300) : 0;
+            const soilClassCostS = form.soilClass === "H" ? 3000 : form.soilClass === "E" ? 6500 : 0;
+            const trafficMgmtCostS = form.trafficMgmt ? parseFloat(form.trafficMgmtCostInput) || 0 : 0;
+            const poolWidthS = parseFloat(form.poolWidth || 4);
+            const fullWidthStepsPool = form.hasSteps && form.stepType === "fullwidth" ? Math.round(poolWidthS * 750) : 0;
+            const fullWidthStepsInFloor = form.hasInFloor && form.hasSteps && form.stepType === "fullwidth" ? Math.round(poolWidthS * 500) : 0;
+            const halfWidthStepsPool = form.hasSteps && form.stepType === "halfwidth" ? Math.round(poolWidthS * 375) : 0;
+            const halfWidthStepsInFloor = form.hasInFloor && form.hasSteps && form.stepType === "halfwidth" ? Math.round(poolWidthS * 375) : 0;
+            const formworkQtyS = form.hasFormwork ? parseFloat(form.formworkSqm) || 0 : 0;
+            const formworkRatesS = { topBond: 65, lightDuty: 120, mediumDuty: 145, heavyDuty: 200 };
+            const formworkRateS = formworkRatesS[form.formworkType] || 0;
+            const formworkRawS = Math.round(formworkQtyS * formworkRateS);
+            const formworkIsIncludedS = true; // all formwork included in pool base
+            const formworkCost = 0;
+            const formworkPoolAdditionS = form.hasFormwork ? formworkRawS : 0;
+            const marginUpliftPct = form.clientType === "premium" ? 0.05 : form.clientType === "builder" ? 0.10 : 0;
+            const accessMultiplier = accessMult(form.accessWidth);
+            const shapeMultiplierS = form.poolShape === "Freeform" ? 1.10 : form.poolShape === "Round" ? 1.08 : 1.0;
+            const locationMultiplierS = form.projectLocation === "peninsulaPorSor" ? 1.12
+                : form.projectLocation === "country" ? 1.12
+                    : form.projectLocation === "peninsulaBlaSho" ? 1.09
+                        : 1.0;
+            const tilePCRateValS = parseFloat(form.tilePCRate) || 55;
+            const tileAreaWithWasteS = totalTiledArea * 1.08;
+            const tilePCSurchargeS2 = tilePCRateValS > 55 ? Math.round(tileAreaWithWasteS * (tilePCRateValS - 55)) : 0;
+            const pumpUpgradeCostS = form.pumpModel === "intelliflo" ? PP.poolVariables.pumpUpgradeIntelliFlo
+                : form.pumpModel === "enviromax" ? PP.poolVariables.pumpUpgradeEnviroMax : 0;
+            const filterDiscountS = form.filterModel === "25inch" ? PP.poolVariables.filterDiscount25inch : 0;
+            const pipeOverage = Math.max(0, (parseFloat(form.pipeRunDistance) || 0) - 10);
+            const pipeCost = Math.round(pipeOverage * PP.poolVariables.pipeRunPerMeter);
+            const truckQtyS = form.truckQty !== undefined && form.truckQty !== "" ? parseInt(form.truckQty) : 2;
+            const truckAdjS = truckQtyS === 0 ? -2500 : truckQtyS === 1 ? -1750 : truckQtyS === 3 ? 1750 : 0;
+            const roadClosureRateS = form.roadClosureType === "full" ? 2500 : 1500;
+            const roadClosureQtyS = parseInt(form.roadClosureQty) || 1;
+            const roadAmt = form.roadClosure ? roadClosureRateS * roadClosureQtyS : 0;
+            const drivewayPricesS = { "10": 950, "15": 1100, "20": 1200, "25": 1300, "30": 1500, "40": 1800 };
+            const drivewayPoolCostS = form.drivewayProtection ? (drivewayPricesS[form.drivewayProtectionSize] || 950) : 0;
+            const externalSurfacesCostS = Math.round(parseFloat(form.externalSurfacesCost) || 0);
+            const membraneAreaOnlyCostS = Math.round((parseFloat(form.membraneAreaOnly) || 0) * 90);
+            const beamSqmS = form.hasBeams && form.beamLength ? parseFloat(form.beamLength) * (parseFloat(form.beamWidth) / 1000) : 0;
+            const beamCostS = Math.round(beamSqmS * 800);
+            const baseBeforeUplift = Math.round((Math.round(sqm * PP.poolPerSqm) - Math.round(aquaNeonDisc) + Math.round(tile25Surcharge) + swimoutCostS + fullWidthStepsPool + halfWidthStepsPool + soilNotRemovedCreditS + soilClassCostS + trafficMgmtCostS + formworkPoolAdditionS + tilePCSurchargeS2 + pumpUpgradeCostS + pipeCost - filterDiscountS + truckAdjS + externalSurfacesCostS + membraneAreaOnlyCostS + drivewayPoolCostS + roadAmt + beamCostS
+                - (form.engineeringPlans === "byOthers" ? PP.poolVariables.engineeringByOthersCredit : 0)) * accessMultiplier * shapeMultiplierS * locationMultiplierS);
+            const poolBase = Math.round(baseBeforeUplift * (1 + marginUpliftPct));
+            const perimSqm = perim * avgDepthTile + sqm;
+            const membraneCost = form.hasMembrane ? Math.round(perimSqm * PP.poolVariables.membranePerSqm) : 0;
+            const extraBobcat = form.bobcatDays ? parseFloat(form.bobcatDays) * PP.poolVariables.bobcatPerDay : 0;
+            const extraTruck = 0; // folded into pool base
+            const trackedLoaderAmt = form.trackedLoader ? Math.round(parseFloat(form.trackedLoaderDays || 1) * 1650) : 0;
+            const tippingQtyS = parseInt(form.tippingLoads) || 8;
+            const extraTipping = tippingQtyS > 8 ? Math.round((tippingQtyS - 8) * 300) : 0;
+            const foundationsAmt = parseFloat(form.foundationsPS) || 0;
+            const soilLoads = parseFloat(form.soilLoadsOnSite) || 0;
+            const soilCredit = form.soilOnSite && soilLoads > 0 ? -(soilLoads * PP.poolVariables.soilOnSiteCredit) : 0;
+            const spaAmt = form.hasSpa ? (PP.spa[form.spaType] || PP.spa.square18) : 0;
+            const airBlowerAmt = form.hasSpa && form.hasAirBlower ? PP.airBlower : 0;
+            const inFloorAmt = form.hasInFloor ? PP.inFloor(sqm) + fullWidthStepsInFloor + halfWidthStepsInFloor : 0;
+            const solarSqmCount = parseInt(form.solarSqm) || Math.round(sqm);
+            const solarAmt = form.hasSolar ? PP.solar(solarSqmCount) : 0;
+            const lCount = parseInt(form.lightCount) || Math.max(2, Math.round(L / 3));
+            const totalLightsS = lCount + (form.hasSpa ? 1 : 0);
+            const lightUnitPriceS = (PP.lightTypes[form.lightType] || PP.lightTypes.WN9).price;
+            const lightLabelS = (PP.lightTypes[form.lightType] || PP.lightTypes.WN9).label;
+            const lightingAmt = totalLightsS * lightUnitPriceS;
+            const chlorAmt = PP.chlorinator[form.chlorinator] || PP.chlorinator.SWC35;
+            const autofillerAmt = form.autofillerType === "paralevel" ? PP.paralevel : PP.aquafill;
+            const automationAmt = (form.hasAutomation || form.hasSpa) ? (form.automationType === "intelliCenter" ? PP.automation.intelliCenter : PP.automation.aquaLink) : 0;
+            const gasRequired = form.proposalType === "poolspa" || form.hasGasHeater;
+            const gasAmt = gasRequired ? PP.gasHeater : 0;
+            const hpExact = form.heatPump !== "None" ? PP.heatPumps[form.heatPump] : 0;
+            const hpAmt = form.heatPump !== "None"
+                ? (hpExact !== null && hpExact !== undefined ? hpExact : (R.heatPumps[form.heatPump] || 0)) + (form.heatPumpWallMount ? parseFloat(form.heatPumpWallMountCost) || 0 : 0)
+                : 0;
+            const rockAmt = parseFloat(form.rockHardGround) || 0;
+            const drivewayAmt = form.drivewayProtection ? parseFloat(form.drivewayProtectionCost) || 0 : 0;
+            const sitePrepAmt = form.sitePrepDemolition ? parseFloat(form.sitePrepDemolitionCost) || 0 : 0;
+            const infinityEdgeAmt = (() => {
+                if (!form.infinityEdge)
+                    return 0;
+                const ieLen = parseFloat(form.infinityEdgeLength || form.poolLength) || 0;
+                const btL = parseFloat(form.balanceTankLength || form.poolLength) || 0;
+                const btW = parseFloat(form.balanceTankWidth || "0.8") || 0.8;
+                const btD = parseFloat(form.balanceTankDepth || "0.8") || 0.8;
+                const wallH = parseFloat(form.infinityEdgeWallHeight || "1.2") || 1.2;
+                const wallSteps = Math.round((wallH - 1.2) / 0.1);
+                const wallMultiplier = wallSteps > 0 ? Math.pow(1.05, wallSteps) : 1;
+                const curvedSurcharge = form.infinityEdgeDetail === "curvedEdge" ? Math.round(ieLen * 250) : 0;
+                const btSqm = (btL * btW) + (2 * btL * btD) + (2 * btW * btD);
+                const tiledSurcharge = form.infinityEdgeInteriorFinish === "tiled" ? Math.round(btSqm * 250) : 0;
+                const subtotal = Math.round(ieLen * 4500 * wallMultiplier) + curvedSurcharge + tiledSurcharge;
+                const shapeSurcharge = (form.poolShape === "Freeform" || form.poolShape === "Round") ? Math.round(subtotal * 0.10) : 0;
+                return subtotal + shapeSurcharge;
+            })();
+            const exGSTTotal = poolBase + membraneCost + extraBobcat + trackedLoaderAmt + extraTipping + soilCredit + foundationsAmt + spaAmt + airBlowerAmt + inFloorAmt + solarAmt + lightingAmt + chlorAmt + autofillerAmt + automationAmt + gasAmt + hpAmt + rockAmt + sitePrepAmt + infinityEdgeAmt;
+            const gst = Math.round(exGSTTotal * 0.10);
+            const incGST = exGSTTotal + gst;
+            // Profit margin: pool base includes 15% (homeowner), 20% (premium), 25% (builder)
+            // Cost = poolBase / (1 + marginUpliftPct) / 1.15 — then profit = sellPrice - cost
+            const baseMargin = 0.15; // always baked into $2,750/sqm
+            const totalMarginMultiplier = (1 + baseMargin) * (1 + marginUpliftPct);
+            const poolCost = Math.round(poolBase / totalMarginMultiplier);
+            const poolProfit = poolBase - poolCost;
+            const profitPct = Math.round((1 - 1 / totalMarginMultiplier) * 100);
+            const SumSection = ({ title, children }) => (React.createElement("div", { style: { marginBottom: 20 } },
+                React.createElement("div", { style: { fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", color: "#1a56b0", textTransform: "uppercase", borderBottom: "2px solid #1a56b0", paddingBottom: 3, marginBottom: 10 } }, title),
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 24px" } }, children)));
+            const SumRow = ({ label, value, highlight, credit }) => (React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "4px 8px", background: highlight ? "#eef4ff" : "transparent", borderRadius: 5 } },
+                React.createElement("span", { style: { fontSize: 13, color: credit ? "#27ae60" : "#333" } }, label),
+                React.createElement("span", { style: { fontSize: 13, fontWeight: 600, color: credit ? "#27ae60" : "#0d2d6b" } }, value)));
+            const fmtS = n => n === 0 ? "—" : `$${Math.abs(n).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            return (React.createElement("div", null,
+                React.createElement(SumSection, { title: "Client & Project" },
+                    React.createElement(SumRow, { label: "Client", value: `${form.clientFirstName} ${form.clientSurname}` }),
+                    React.createElement(SumRow, { label: "Type", value: form.proposalType === "poolspa" ? "Pool & Spa" : "Pool Only" }),
+                    React.createElement(SumRow, { label: "Address", value: `${form.clientAddress}, ${form.clientSuburb}` }),
+                    React.createElement(SumRow, { label: "Client Type", value: { homeowner: "Homeowner", builder: "Builder", premium: "Premium" }[form.clientType] })),
+                React.createElement(SumSection, { title: "Pool" },
+                    React.createElement(SumRow, { label: "Dimensions", value: form.poolShape === "Round" && form.poolDiameter ? form.poolDiameter + "m diameter (" + sqm.toFixed(1) + " Sq.m)" : L + "m x " + W + "m (" + sqm.toFixed(1) + " Sq.m)" }),
+                    React.createElement(SumRow, { label: "Depth", value: `Shallow ${dShallow}m — Deep ${dDeep}m (avg ${((dShallow + dDeep) / 2).toFixed(2)}m)` }),
+                    React.createElement(SumRow, { label: "Shape", value: `${form.poolShape}${form.poolShape === "Freeform" ? " (+10%)" : form.poolShape === "Round" ? " (+8%)" : ""}` }),
+                    React.createElement(SumRow, { label: "Volume (approx)", value: `${Math.round(sqm * ((dShallow + dDeep) / 2) * 1000).toLocaleString("en-AU")} L` }),
+                    React.createElement(SumRow, { label: "Entry Steps", value: form.hasSteps ? `${form.stepCount} × ${form.stepType === "fullwidth" ? "Full Width Steps" : form.stepType === "halfwidth" ? "Half Width Steps" : "Corner Steps"}` : "None" }),
+                    form.hasSwimout && React.createElement(SumRow, { label: "Swimout / Ledge", value: `${form.swimoutLength}m × ${form.swimoutWidth}m (${(parseFloat(form.swimoutLength) * parseFloat(form.swimoutWidth)).toFixed(2)} Sq.m)` }),
+                    form.hasBeams && beamCostS > 0 && React.createElement(SumRow, { label: "Beams", value: form.beamLength + "m x " + form.beamWidth + "mm = " + beamSqmS.toFixed(2) + " Sq.m @ $800 = $" + beamCostS.toLocaleString("en-AU") + " (incl. in pool price)" }),
+                    React.createElement(SumRow, { label: "Pipe Run", value: (form.pipeRunDistance || 10) + "m total" + (pipeCost > 0 ? " - " + pipeOverage + "m over 10m x $450 = $" + pipeCost.toLocaleString("en-AU") + " (incl. in pool)" : " (within included 10m)") })),
+                form.hasSpa && React.createElement(SumSection, { title: "Spa" },
+                    React.createElement(SumRow, { label: "Spa Type / Size", value: { square18: "Square 1.8 x 1.8m", square22: "Square 2.2 x 2.2m", squareGutter: "Square with Gutter", squareRaised: "Square & Raised 300mm", round20: "Round 2.0m", round25: "Round 2.5m", roundGutter: "Round with Gutter", roundGutterRaised: "Round with Gutter & Raised 300mm" }[form.spaType] || form.spaType }),
+                    React.createElement(SumRow, { label: "Air Blower", value: form.hasAirBlower ? `Included — $${PP.airBlower.toLocaleString("en-AU")}` : "Not included" }),
+                    form.hasAutomation && React.createElement(SumRow, { label: "Automation", value: form.automationType === "intelliCenter" ? "Pentair IntelliCentre PNP8 + Phone Control" : "AquaLink PS8 PDA + iAquaLink Phone Control" })),
+                form.infinityEdge && React.createElement(SumSection, { title: "Infinity Edge & Balance Tank" },
+                    React.createElement(SumRow, { label: "Edge Detail", value: { reverseEdge: "Reverse Edge (Towards pool)", forwardEdge: "Forward Edge (Away from pool)", curvedEdge: "Curved Edge (Curved away from pool)" }[form.infinityEdgeDetail] || "Included" }),
+                    React.createElement(SumRow, { label: "Edge Length", value: (parseFloat(form.infinityEdgeLength || form.poolLength) || 0) + "m" }),
+                    React.createElement(SumRow, { label: "Wall Height (Above Balance Tank)", value: (form.infinityEdgeWallHeight || "1.2") + "m" }),
+                    React.createElement(SumRow, { label: "Interior Finish", value: (() => {
+                            const btL = parseFloat(form.balanceTankLength || form.poolLength) || 0;
+                            const btW = parseFloat(form.balanceTankWidth || "0.8") || 0.8;
+                            const btD = parseFloat(form.balanceTankDepth || "0.8") || 0.8;
+                            const btSqm = (btL * btW) + (2 * btL * btD) + (2 * btW * btD);
+                            const tiledSurcharge = form.infinityEdgeInteriorFinish === "tiled" ? Math.round(btSqm * 250) : 0;
+                            return form.infinityEdgeInteriorFinish === "tiled" ? "Tiled — " + btSqm.toFixed(1) + " Sq.m x $250 = +$" + tiledSurcharge.toLocaleString("en-AU") : "Grating (no surcharge)";
+                        })() }),
+                    React.createElement(SumRow, { label: "Balance Tank", value: (form.balanceTankLength || form.poolLength || "?") + "m L x " + (form.balanceTankWidth || "0.8") + "m W x " + (form.balanceTankDepth || "0.8") + "m D" }),
+                    (() => {
+                        const ieLen = parseFloat(form.infinityEdgeLength || form.poolLength) || 0;
+                        const wallH = parseFloat(form.infinityEdgeWallHeight || "1.2") || 1.2;
+                        const wallSteps = Math.round((wallH - 1.2) / 0.1);
+                        const wallMultiplier = wallSteps > 0 ? Math.pow(1.05, wallSteps) : 1;
+                        const adjRate = Math.round(4500 * wallMultiplier);
+                        const curvedSurcharge = form.infinityEdgeDetail === "curvedEdge" ? Math.round(ieLen * 250) : 0;
+                        const btL = parseFloat(form.balanceTankLength || form.poolLength) || 0;
+                        const btW = parseFloat(form.balanceTankWidth || "0.8") || 0.8;
+                        const btD = parseFloat(form.balanceTankDepth || "0.8") || 0.8;
+                        const btSqm = (btL * btW) + (2 * btL * btD) + (2 * btW * btD);
+                        const tiledSurcharge = form.infinityEdgeInteriorFinish === "tiled" ? Math.round(btSqm * 250) : 0;
+                        const subtotal = Math.round(ieLen * adjRate) + curvedSurcharge + tiledSurcharge;
+                        const shapeSurcharge = (form.poolShape === "Freeform" || form.poolShape === "Round") ? Math.round(subtotal * 0.10) : 0;
+                        return React.createElement(SumRow, { label: "Total Price", value: "$" + adjRate.toLocaleString("en-AU") + "/m" + (wallSteps > 0 ? " +" + wallSteps + "x5% wall height" : "") + (curvedSurcharge > 0 ? " +$" + curvedSurcharge.toLocaleString("en-AU") + " curved" : "") + (tiledSurcharge > 0 ? " +$" + tiledSurcharge.toLocaleString("en-AU") + " tiled" : "") + (shapeSurcharge > 0 ? " +" + form.poolShape + " 10% = +$" + shapeSurcharge.toLocaleString("en-AU") : "") + " = $" + (subtotal + shapeSurcharge).toLocaleString("en-AU") });
+                    })()),
+                React.createElement(SumSection, { title: "Site" },
+                    React.createElement(SumRow, { label: "Project Location", value: { metro: "Metro", peninsulaPorSor: "Peninsula — Portsea / Sorrento (+12%)", peninsulaBlaSho: "Peninsula — Blairgowrie / Shoreham (+9%)", country: "Country Project (+12%)" }[form.projectLocation] || form.projectLocation }),
+                    React.createElement(SumRow, { label: "Access Width", value: { "1800": "≤ 1800mm — Very Tight (+15%)", "2200": "2000–2450mm — Ok (+5%)", "2700": "2500–2950mm — Good (+0%)", "3000": "3000mm+ — Great (−2.5%)", "acreage": "Acreage (−5%)" }[form.accessWidth] || form.accessWidth, credit: form.accessWidth === "3000" || form.accessWidth === "acreage" }),
+                    React.createElement(SumRow, { label: "Soil Class", value: `${form.soilClass}${form.soilClass === "H" ? " — +$3,000" : form.soilClass === "E" ? " — +$6,500" : ""}` }),
+                    React.createElement(SumRow, { label: "Engineering Plans", value: form.engineeringPlans === "byOthers" ? "By Others (−$1,500)" : "By Enkipools", credit: form.engineeringPlans === "byOthers" }),
+                    form.outOfGround && React.createElement(SumRow, { label: "Out of Ground", value: "Yes" })),
+                React.createElement(SumSection, { title: "Excavation" },
+                    form.sitePrepDemolition && parseFloat(form.sitePrepDemolitionCost) > 0 && React.createElement(SumRow, { label: "Site Prep or Demolition", value: `$${parseFloat(form.sitePrepDemolitionCost).toLocaleString("en-AU", { minimumFractionDigits: 2 })}` }),
+                    React.createElement(SumRow, { label: "Soil Removed", value: form.soilRemoved === "yes" ? "Yes" : "No — credit −$2,400 applied to pool price", credit: form.soilRemoved === "no" }),
+                    form.soilRemoved === "yes" && React.createElement(SumRow, { label: "Trucks", value: truckQtyS + " truck" + (truckQtyS !== 1 ? "s" : "") + (truckAdjS < 0 ? " (−$" + Math.abs(truckAdjS).toLocaleString("en-AU") + " incl. in pool price)" : truckAdjS > 0 ? " (+$" + truckAdjS.toLocaleString("en-AU") + " incl. in pool price)" : " (included)"), credit: truckAdjS < 0 }),
+                    form.trackedLoader && React.createElement(SumRow, { label: "Tracked Loader (Posi or Wheeled Dumper)", value: `${form.trackedLoaderDays} day${parseFloat(form.trackedLoaderDays) !== 1 ? "s" : ""} @ $1,650 = $${trackedLoaderAmt.toLocaleString("en-AU")}` }),
+                    React.createElement(SumRow, { label: "Tipping Loads", value: tippingQtyS + " loads" + (extraTipping > 0 ? " — " + (tippingQtyS - 8) + " extra @ $300 = +$" + extraTipping.toLocaleString("en-AU") : " (within included 8)") }),
+                    form.soilOnSite && parseFloat(form.soilLoadsOnSite) > 0 && React.createElement(SumRow, { label: "Soil Left on Site", value: `${form.soilLoadsOnSite} loads — credit −$${(parseFloat(form.soilLoadsOnSite) * 180).toLocaleString("en-AU")}`, credit: true }),
+                    parseFloat(form.rockHardGround) > 0 && React.createElement(SumRow, { label: "Rock or Hard Ground", value: `PS $${parseFloat(form.rockHardGround).toLocaleString("en-AU")}` }),
+                    form.roadClosure && roadAmt > 0 && React.createElement(SumRow, { label: "Road Closure", value: (form.roadClosureType === "full" ? "Full Day" : "1/2 Day") + " x " + roadClosureQtyS + " @ $" + roadClosureRateS.toLocaleString("en-AU") + " = $" + roadAmt.toLocaleString("en-AU") + " (incl. in pool price)" }),
+                    form.drivewayProtection && React.createElement(SumRow, { label: "Driveway Protection", value: form.drivewayProtectionSize + "m @ 2400mm — $" + ({ "10": 950, "15": 1100, "20": 1200, "25": 1300, "30": 1500, "40": 1800 }[form.drivewayProtectionSize] || 950).toLocaleString("en-AU") + " (incl. in pool price)" }),
+                    form.trafficMgmt && trafficMgmtCostS > 0 && React.createElement(SumRow, { label: "Traffic Management", value: `$${trafficMgmtCostS.toLocaleString("en-AU")} (incl. in pool price)` })),
+                React.createElement(SumSection, { title: "Pool Price Variables" },
+                    React.createElement(SumRow, { label: "Base (" + sqm.toFixed(1) + " Sq.m x $2,750" + (marginUpliftPct > 0 ? " +" + (marginUpliftPct * 100) + "% client" : "") + (locationMultiplierS > 1 ? " +" + ((locationMultiplierS - 1) * 100).toFixed(0) + "% location" : "") + ")", value: fmtS(poolBase) }),
+                    aquaNeonDisc > 0 && React.createElement(SumRow, { label: "AquaNeon Discount", value: `−$${Math.round(aquaNeonDisc).toLocaleString("en-AU")}`, credit: true }),
+                    swimoutCostS > 0 && React.createElement(SumRow, { label: `Swimout (${swimoutSqmS.toFixed(2)} Sq.m @ $1,000/Sq.m)`, value: fmtS(swimoutCostS) }),
+                    form.engineeringPlans === "byOthers" && React.createElement(SumRow, { label: "Engineering by Others", value: "\u2212$1,500", credit: true }),
+                    fullWidthStepsPool > 0 && React.createElement(SumRow, { label: `Full Width Steps — Pool (${poolWidthS}m × $750)`, value: fmtS(fullWidthStepsPool) }),
+                    fullWidthStepsInFloor > 0 && React.createElement(SumRow, { label: `Full Width Steps — In-Floor (${poolWidthS}m × $500)`, value: fmtS(fullWidthStepsInFloor) }),
+                    halfWidthStepsPool > 0 && React.createElement(SumRow, { label: `Half Width Steps — Pool (${poolWidthS}m × $375)`, value: fmtS(halfWidthStepsPool) }),
+                    halfWidthStepsInFloor > 0 && React.createElement(SumRow, { label: `Half Width Steps — In-Floor (${poolWidthS}m × $375)`, value: fmtS(halfWidthStepsInFloor) }),
+                    tile25Surcharge > 0 && React.createElement(SumRow, { label: "25mm Tile Surcharge (" + totalTiledArea.toFixed(1) + " Sq.m)", value: `+$${Math.round(tile25Surcharge).toLocaleString("en-AU")}` }),
+                    form.hasFormwork && formworkQtyS > 0 && (() => { const fwL = { topBond: "Top Bond/Plinth", lightDuty: "Light Duty", mediumDuty: "Medium Duty", heavyDuty: "Heavy Duty" }[form.formworkType]; const fwVal = (form.formworkType === "topBond" ? formworkQtyS + "lm" : formworkQtyS + " Sq.m") + " @ $" + formworkRateS + "/unit = $" + formworkRawS.toLocaleString("en-AU") + " (incl. in pool)"; return React.createElement(SumRow, { label: "Formwork - " + fwL, value: fwVal }); })(),
+                    membraneCost > 0 && React.createElement(SumRow, { label: "Waterproof Membrane", value: fmtS(membraneCost) }),
+                    membraneAreaOnlyCostS > 0 && React.createElement(SumRow, { label: "Waterproof Membrane — Area Only" + (form.membraneAreaOnlyType ? " (" + form.membraneAreaOnlyType + ")" : ""), value: form.membraneAreaOnly + " Sq.m @ $90 = $" + membraneAreaOnlyCostS.toLocaleString("en-AU") + " (incl. in pool price)" }),
+                    soilCredit < 0 && React.createElement(SumRow, { label: "Soil on Site (" + soilLoads + " loads)", value: "−$" + Math.abs(soilCredit).toLocaleString("en-AU"), credit: true }),
+                    foundationsAmt > 0 && React.createElement(SumRow, { label: "Foundations / Shoring PS", value: ({ underPoolPiers: "Under Pool Piers", shallowProppedPiers: "Shallow Propped Piers", protectionPiers: "Protection Piers" }[form.foundationsType] || "") + " — $" + foundationsAmt.toLocaleString("en-AU") }),
+                    pipeCost > 0 && React.createElement(SumRow, { label: "Pipe Run (" + pipeOverage + "m over 10m @ $450/m)", value: "$" + pipeCost.toLocaleString("en-AU") + " (incl. in pool price)" }),
+                    pumpUpgradeCostS > 0 && (() => { const pl = { intelliflo: "Intelliflo VS", enviromax: "EnviroMax VS" }[form.pumpModel]; return React.createElement(SumRow, { label: pl + " Pump Upgrade", value: "+" + "$" + pumpUpgradeCostS.toLocaleString("en-AU") + " (incl. in pool price)" }); })()),
+                React.createElement(SumSection, { title: "Interior" },
+                    (() => {
+                        const iLabel = { ceramic: "Ceramic Tile 50x50mm", ceramic25mm: "Ceramic Tile 25x25mm", glass: "Glass Mosaic Tile", aquaneon: "AquaNeon Interior" }[form.interior];
+                        const tileAreaWithWaste = totalTiledArea * 1.08;
+                        const tilePCRateVal = parseFloat(form.tilePCRate) || 55;
+                        const tilePCSurchargeS = tilePCRateVal > 55 ? Math.round(tileAreaWithWaste * (tilePCRateVal - 55)) : 0;
+                        return React.createElement(React.Fragment, null,
+                            React.createElement(SumRow, { label: "Tile Type", value: iLabel }),
+                            React.createElement(SumRow, { label: "Tiled Surface Area", value: `${totalTiledArea.toFixed(1)} Sq.m` }),
+                            React.createElement(SumRow, { label: "Tile Qty (incl. 8% waste)", value: `${tileAreaWithWaste.toFixed(1)} Sq.m` }),
+                            React.createElement(SumRow, { label: "Tile Supply P.C. Rate", value: "$" + tilePCRateVal.toFixed(2) + "/Sq.m" + (tilePCSurchargeS > 0 ? " — +$" + tilePCSurchargeS.toLocaleString("en-AU") + " added to pool price" : " (base rate - included)") }),
+                            form.interior === "ceramic25mm" && React.createElement(SumRow, { label: "25mm Surcharge", value: `${totalTiledArea.toFixed(1)} Sq.m × $35 = $${Math.round(totalTiledArea * 35).toLocaleString("en-AU")}` }),
+                            form.interior === "aquaneon" && React.createElement(SumRow, { label: "AquaNeon Discount", value: `${sqm.toFixed(1)} Sq.m × $145 = −$${Math.round(sqm * 145).toLocaleString("en-AU")}`, credit: true }));
+                    })(),
+                    form.hasMembrane && React.createElement(SumRow, { label: "Waterproof Membrane", value: `${perimSqm.toFixed(1)} Sq.m × $90 = $${Math.round(perimSqm * 90).toLocaleString("en-AU")}` })),
+                (form.externalSurfacesSqm || form.externalSurfacesCost) && React.createElement(SumSection, { title: "External Surfaces" },
+                    form.externalSurfacesSqm && React.createElement(SumRow, { label: "Surface Area", value: parseFloat(form.externalSurfacesSqm).toFixed(1) + " Sq.m" }),
+                    form.externalSurfacesType && React.createElement(SumRow, { label: "Type of Finish", value: form.externalSurfacesType }),
+                    externalSurfacesCostS > 0 && React.createElement(SumRow, { label: "Cost (incl. in pool price)", value: "$" + externalSurfacesCostS.toLocaleString("en-AU") })),
+                React.createElement(SumSection, { title: "Equipment & Extras" },
+                    React.createElement(SumRow, { label: "Filter", value: form.filterModel === "Tagelus100D" ? "Pentair Tagelus 100D" : "Pentair 25in (−$480 incl. in pool price)" }),
+                    (() => { const pumpLabel = { intelliflo: "Pentair Intelliflo VS", enviromax: "Pentair EnviroMax VS", whisperflo15: "WhisperFlo 1.5Hp" }[form.pumpModel] || form.pumpModel; return React.createElement(SumRow, { label: "Pump", value: pumpLabel }); })(),
+                    (() => { const cl = { SWC25: "Pool Controls SWC25 + Auto pH", SWC35: "Pool Controls SWC35 + Auto pH", SWC45: "Pool Controls SWC45 + Auto pH", intelliChlor60: "IntelliChlor IC60 + IntelliChem", intelliChlor40: "IntelliChlor IC40 + IntelliChem" }[form.chlorinator]; return React.createElement(SumRow, { label: "Salt Chlorinator", value: cl }); })(),
+                    React.createElement(SumRow, { label: "Water Refill", value: form.autofillerType === "paralevel" ? "Paramount Paralevel" : "AquaFill" }),
+                    React.createElement(SumRow, { label: "In-Floor Cleaning", value: form.hasInFloor ? "Paramount PCC2000 with MDX" : "Not included" }),
+                    React.createElement(SumRow, { label: "LED Lights", value: `${totalLightsS} × ${lightLabelS}${form.hasSpa ? " (incl. 1 × Spa)" : ""}` }),
+                    !form.hasSpa && form.hasAutomation && React.createElement(SumRow, { label: "Automation", value: form.automationType === "intelliCenter" ? "Pentair IntelliCentre PNP8 + Phone Control" : "AquaLink PS8 PDA + iAquaLink Phone Control" })),
+                React.createElement(SumSection, { title: "Heating" },
+                    gasRequired && React.createElement(SumRow, { label: "Gas Heater", value: "Pentair MasterTemp 400" }),
+                    form.hasSolar && React.createElement(SumRow, { label: "Solar Heating - " + solarSqmCount + " Sq.m", value: "$" + PP.solar(solarSqmCount).toLocaleString("en-AU") + (form.solarLocation ? " — " + form.solarLocation : "") }),
+                    React.createElement(SumRow, { label: "Heat Pump", value: form.heatPump !== "None" ? form.heatPump + (form.heatPumpWallMount && parseFloat(form.heatPumpWallMountCost) > 0 ? " + Wall Mounting ($" + parseFloat(form.heatPumpWallMountCost).toLocaleString("en-AU") + ")" : "") : "Not included" }),
+                    form.heatPump !== "None" && form.heatPumpWallMount && parseFloat(form.heatPumpWallMountCost) > 0 && React.createElement(SumRow, { label: "Wall Mounting", value: `$${parseFloat(form.heatPumpWallMountCost).toLocaleString("en-AU")} (incl. in Heat Pump total)` })),
+                (() => {
+                    // Implied gross margin analysis
+                    // Pool base cost = pool sell price / (1 + baseMargin) / (1 + marginUpliftPct)
+                    const poolSellPrice = poolBase;
+                    const poolEstCost = Math.round(poolSellPrice / totalMarginMultiplier);
+                    // All other confirmed PP items — assume 15% margin baked in
+                    const otherSell = exGSTTotal - poolSellPrice;
+                    const otherEstCost = Math.round(otherSell / 1.15);
+                    const totalEstCost = poolEstCost + otherEstCost;
+                    const impliedMarginDollar = exGSTTotal - totalEstCost;
+                    const impliedMarginPct = exGSTTotal > 0 ? ((impliedMarginDollar / exGSTTotal) * 100).toFixed(1) : 0;
+                    const fmtM = n => `$${Math.abs(n).toLocaleString("en-AU", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                    return (React.createElement("div", { style: { marginTop: 8 } },
+                        React.createElement("div", { style: { background: "linear-gradient(135deg, #0d2d6b, #1a56b0)", borderRadius: "10px 10px 0 0", padding: "18px 22px", color: "white" } },
+                            React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 16 } }, [
+                                ["Ex GST", `$${exGSTTotal.toLocaleString("en-AU", { minimumFractionDigits: 2 })}`],
+                                ["GST (10%)", `$${gst.toLocaleString("en-AU", { minimumFractionDigits: 2 })}`],
+                                ["Total inc GST", `$${incGST.toLocaleString("en-AU", { minimumFractionDigits: 2 })}`],
+                                ["Implied Margin", `${fmtM(impliedMarginDollar)} (${impliedMarginPct}%)`],
+                            ].map(([l, v]) => (React.createElement("div", { key: l },
+                                React.createElement("div", { style: { fontSize: 11, opacity: 0.7, textTransform: "uppercase", letterSpacing: "0.08em" } }, l),
+                                React.createElement("div", { style: { fontSize: l === "Total inc GST" ? 20 : 15, fontWeight: 800 } }, v)))))),
+                        React.createElement("div", { style: { background: "#f8faff", border: "1px solid #dde3ef", borderTop: "none", borderRadius: "0 0 10px 10px", padding: "14px 22px" } },
+                            React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "#1a56b0", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 } }, "Implied Gross Margin Breakdown"),
+                            React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 } }, [
+                                ["Pool Sell Price", fmtM(poolSellPrice)],
+                                ["Pool Est. Cost", fmtM(poolEstCost)],
+                                ["Other Items Sell", fmtM(otherSell)],
+                                ["Other Est. Cost", fmtM(otherEstCost)],
+                                ["Total Est. Cost", fmtM(totalEstCost)],
+                                ["Total Sell Ex-GST", fmtM(exGSTTotal)],
+                                ["Gross Margin $", fmtM(impliedMarginDollar)],
+                                ["Gross Margin %", `${impliedMarginPct}%`],
+                            ].map(([l, v]) => (React.createElement("div", { key: l, style: { padding: "6px 8px", background: l.includes("Gross") ? "#eef4ff" : "transparent", borderRadius: 5 } },
+                                React.createElement("div", { style: { fontSize: 10, color: "#888", textTransform: "uppercase", letterSpacing: "0.06em" } }, l),
+                                React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: l.includes("Gross") ? "#0d2d6b" : "#333" } }, v))))),
+                            React.createElement("div", { style: { marginTop: 10, fontSize: 11, color: "#999" } },
+                                "Pool cost back-calculated at ",
+                                Math.round((1 - 1 / totalMarginMultiplier) * 100),
+                                "% margin. Other items assumed at 15% margin. For reference only."))));
+                })()));
+        }),
+        view === "proposal" && result && (React.createElement("div", { style: cardStyle },
+        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 } },
+            React.createElement("div", { style: { fontSize: 17, fontWeight: 800, color: "#0d2d6b" } }, "Quotation \u2014 Ready to Send"),
+            React.createElement("div", { style: { display: "flex", gap: 8 } },
+                React.createElement("button", { style: btnSecondary, onClick: () => setView("estimator") }, "\u2190 Edit"),
+                React.createElement("button", { style: btnPrimary, onClick: () => setView("result") }, "View Summary \u2192"))),
+        React.createElement(ProposalOutput, null))))));
+}
+  const root = ReactDOM.createRoot(document.getElementById('root'));
+  root.render(React.createElement(EnkipoolsEstimator));
+})(window.React, window.ReactDOM);
+  </script>
+</body>
+</html>
