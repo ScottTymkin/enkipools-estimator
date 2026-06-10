@@ -380,12 +380,12 @@ function EnkipoolsEstimator() {
     poolShape: "Rectangle",
     // Site
     accessWidth: "2700", soilClass: "M", trafficMgmt: false, trafficMgmtCostInput: "", engineeringPlans: "byEnki", outOfGround: false, projectLocation: "metro",
-    soilRemoved: "yes", truckQty: "2", trackedLoader: false, trackedLoaderDays: "1",
+    soilRemoved: "yes", truckQty: "2", truckDays: "1", trackedLoader: false, trackedLoaderDays: "1",
     tippingLoads: "8", rockHardGround: "0", drivewayProtection: false, drivewayProtectionCost: "", drivewayProtectionSize: "10",
     roadClosure: false, roadClosureCostInput: "", roadClosureType: "half", roadClosureQty: "1", sitePrepDemolition: false, sitePrepDemolitionCost: "",
     extraFormwork: false, provisionalSum: false, provisionalSumAmt: "0",
     // Interior
-    hasBeams: false, beamLength: "", beamWidth: "300",
+    hasBeams: false, beamLength: "", beamWidth: "300", hasBeams2: false, beamLength2: "", beamWidth2: "300",
     waterproofMembrane: false, tilePCRate: "55",
     // Spa
     hasSpa: false, spaType: "square18", hasAirBlower: false,
@@ -573,10 +573,11 @@ function EnkipoolsEstimator() {
       : 1.0;
     // Trucks: 2 included. 0 trucks = −$2,500, 1 truck = −$1,750, 3 trucks = +$1,750 — all in pool base
     const truckQty = form.truckQty !== undefined && form.truckQty !== "" ? parseInt(form.truckQty) : 2;
-    const truckAdjustment = truckQty === 0 ? -2500
-      : truckQty === 1 ? -1750
-      : truckQty === 3 ? 1750
-      : 0;
+    const truckDays = parseInt(form.truckDays) || 1;
+    const truckRatePerDay = truckQty === 0 ? -2500 : truckQty === 1 ? -1750 : truckQty === 3 ? 1750 : 0;
+    const truckAdjustment = truckDays === 2
+      ? (truckQty === 0 ? 3500 : truckQty === 1 ? 5000 : truckQty === 2 ? 6500 : 8000)
+      : truckRatePerDay * truckDays;
     // Driveway protection — price by size, added to pool base
     const drivewayPrices = {"10": 950, "15": 1100, "20": 1200, "25": 1300, "30": 1500, "40": 1800};
     const drivewayPoolCost = form.drivewayProtection ? (drivewayPrices[form.drivewayProtectionSize] || 950) : 0;
@@ -590,8 +591,10 @@ function EnkipoolsEstimator() {
     const membraneAreaOnlyCost = Math.round((parseFloat(form.membraneAreaOnly) || 0) * 90);
     // Beam cost — $800/sqm for non-standard beams above 180mm
     const beamSqm = form.hasBeams && form.beamLength ? parseFloat(form.beamLength) * (parseFloat(form.beamWidth) / 1000) : 0;
-    const beamCost = Math.round(beamSqm * 800);
-    const baseBeforeUplift = Math.round((Math.round(sqmNum * PP.poolPerSqm) - aquaNeonDiscount + tile25mmSurcharge + swimoutCost + fullWidthStepsCostPool + halfWidthStepsCostPool + soilNotRemovedCredit + soilClassCost + trafficMgmtCost + formworkPoolAddition + tilePCSurcharge + pumpUpgradeCost + pipeRunCost - filterDiscount + truckAdjustment + externalSurfacesCost + membraneAreaOnlyCost + drivewayPoolCost + roadClosureCost + beamCost
+    const beamSqm2 = form.hasBeams2 && form.beamLength2 ? parseFloat(form.beamLength2) * (parseFloat(form.beamWidth2) / 1000) : 0;
+    const beamCost = Math.round((beamSqm + beamSqm2) * 175);
+    const trackedLoaderCost = form.trackedLoader ? Math.round(parseFloat(form.trackedLoaderDays || 1) * 1650) : 0;
+    const baseBeforeUplift = Math.round((Math.round(sqmNum * PP.poolPerSqm) - aquaNeonDiscount + tile25mmSurcharge + swimoutCost + fullWidthStepsCostPool + halfWidthStepsCostPool + soilNotRemovedCredit + soilClassCost + trafficMgmtCost + formworkPoolAddition + tilePCSurcharge + pumpUpgradeCost + pipeRunCost - filterDiscount + truckAdjustment + externalSurfacesCost + membraneAreaOnlyCost + drivewayPoolCost + roadClosureCost + beamCost + trackedLoaderCost
       - (form.engineeringPlans === "byOthers" ? PP.poolVariables.engineeringByOthersCredit : 0)) * accessMultiplier * shapeMultiplier * locationMultiplier);
     const poolBase = Math.round(baseBeforeUplift * (1 + marginUpliftPct));
 
@@ -612,7 +615,6 @@ function EnkipoolsEstimator() {
       : 2 * (parseFloat(form.poolLength || 9) + parseFloat(form.poolWidth || 4))) * parseFloat(form.depthDeep || 1.8) + sqmNum;
     const membraneCost = form.hasMembrane ? Math.round(perimSqm * PP.poolVariables.membranePerSqm) : 0;
     const extraTruckCost = 0; // no longer a separate line — folded into pool base
-    const trackedLoaderCost = form.trackedLoader ? Math.round(parseFloat(form.trackedLoaderDays || 1) * 1650) : 0;
     // Tipping: 8 loads included. Each load above 8 = $300
     const tippingQty = parseInt(form.tippingLoads) || 8;
     const extraTippingCost = tippingQty > 8 ? Math.round((tippingQty - 8) * 300) : 0;
@@ -633,7 +635,7 @@ function EnkipoolsEstimator() {
     const poolSubLabel = interiorLabel
       + (formworkPoolAddition > 0 ? " — " + fwLabel + " Formwork (+$" + formworkPoolAddition.toLocaleString("en-AU") + ")" : "")
       + (swimoutCost > 0 ? " — incl. Swimout " + swimoutSqm.toFixed(2) + " Sq.m ($" + swimoutCost.toLocaleString("en-AU") + ")" : "")
-      + (beamCost > 0 ? " — Beams " + form.beamLength + "m x " + form.beamWidth + "mm (+$" + beamCost.toLocaleString("en-AU") + ")" : "")
+      + (beamCost > 0 ? " — Beams " + (beamSqm + beamSqm2).toFixed(2) + " Sq.m @ $175 (+$" + beamCost.toLocaleString("en-AU") + ")" : "")
       + (fullWidthStepsCostPool > 0 ? " — incl. Full Width Steps ($" + fullWidthStepsCostPool.toLocaleString("en-AU") + ")" : "")
       + (halfWidthStepsCostPool > 0 ? " — incl. Half Width Steps ($" + halfWidthStepsCostPool.toLocaleString("en-AU") + ")" : "")
       + (form.engineeringPlans === "byOthers" ? " — Engineering by Others (-$1,500)" : "")
@@ -644,7 +646,8 @@ function EnkipoolsEstimator() {
       + (tilePCSurcharge > 0 ? " — Tile P.C. upgrade (+$" + tilePCSurcharge.toLocaleString("en-AU") + ")" : "")
       + (filterDiscount > 0 ? " — Pentair 25in filter (-$" + filterDiscount.toLocaleString("en-AU") + ")" : "")
       + (pumpUpgradeCost > 0 ? " — " + (form.pumpModel === "intelliflo" ? "Intelliflo VS" : "EnviroMax VS") + " upgrade (+$" + pumpUpgradeCost.toLocaleString("en-AU") + ")" : "")
-      + (truckAdjustment !== 0 ? " — " + truckQty + " truck" + (truckQty !== 1 ? "s" : "") + " (" + (truckAdjustment > 0 ? "+" : "") + "$" + truckAdjustment.toLocaleString("en-AU") + ")" : "")
+      + (trackedLoaderCost > 0 ? " — Tracked Loader " + form.trackedLoaderDays + " day" + (parseFloat(form.trackedLoaderDays) !== 1 ? "s" : "") + " (+$" + trackedLoaderCost.toLocaleString("en-AU") + ")" : "")
+      + (truckAdjustment !== 0 ? " — " + truckQty + " truck" + (truckQty !== 1 ? "s" : "") + " x " + truckDays + " day" + (truckDays !== 1 ? "s" : "") + " (" + (truckAdjustment > 0 ? "+" : "") + "$" + truckAdjustment.toLocaleString("en-AU") + ")" : "")
       + (roadClosureCost > 0 ? " — Road Closure " + (form.roadClosureType === "full" ? "Full Day" : "1/2 Day") + " x" + roadClosureQtyNum + " (+$" + roadClosureCost.toLocaleString("en-AU") + ")" : "")
       + (drivewayPoolCost > 0 ? " — Driveway Protection " + form.drivewayProtectionSize + "m (+$" + drivewayPoolCost.toLocaleString("en-AU") + ")" : "")
       + (membraneAreaOnlyCost > 0 ? " — Membrane Area " + form.membraneAreaOnly + " Sq.m (+$" + membraneAreaOnlyCost.toLocaleString("en-AU") + ")" : "")
@@ -657,7 +660,6 @@ function EnkipoolsEstimator() {
       { label: "Swimming Pool", sub: poolSubLabel, value: poolBasePrice },
       membraneCost > 0 && { label: "Waterproof Membrane", sub: `${perimSqm.toFixed(0)} Sq.m @ $${PP.poolVariables.membranePerSqm}/Sq.m`, value: membraneCost },
       extraBobcatCost > 0 && { label: "Bobcat", sub: `${form.bobcatDays} day${parseFloat(form.bobcatDays) !== 1 ? "s" : ""} @ $${PP.poolVariables.bobcatPerDay.toLocaleString("en-AU")}/day`, value: extraBobcatCost },
-      trackedLoaderCost > 0 && { label: "Tracked Loader (Posi or Wheeled Dumper)", sub: `${form.trackedLoaderDays} day${parseFloat(form.trackedLoaderDays) !== 1 ? "s" : ""} @ $1,650/day`, value: trackedLoaderCost },
       extraTippingCost > 0 && { label: "Additional Tipping", sub: `${tippingQty - 8} loads above included 8 @ $300/load`, value: extraTippingCost },
       soilCredit < 0 && { label: "Soil Left on Site", sub: `${soilLoads} load${soilLoads !== 1 ? "s" : ""} remaining on site — credit`, value: soilCredit, credit: true },
       form.roadClosure && roadClosureCost > 0 && { label: "Road Closure", sub: (form.roadClosureType === "full" ? "Full Day" : "1/2 Day") + " x " + roadClosureQtyNum + " = $" + roadClosureCost.toLocaleString("en-AU") + " — incl. in Swimming Pool price", value: 0, hideZero: true },
@@ -920,32 +922,61 @@ function EnkipoolsEstimator() {
               </div>
             </Field>
             <Field label="Beams" full>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <label style={checkboxRowStyle}>
-                  <input type="checkbox" checked={form.hasBeams} onChange={() => toggle("hasBeams")} />
-                  Non-standard beams (above 180mm)
-                </label>
-                {form.hasBeams && (<>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 12, color: "#555" }}>Length:</span>
-                    <input style={{ ...inputStyle, width: 90 }} type="number" min="0" step="0.5" value={form.beamLength} onChange={e => set("beamLength", e.target.value)} placeholder="m" />
-                    <span style={{ fontSize: 12, color: "#555" }}>m</span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 12, color: "#555" }}>Width:</span>
-                    <select style={selectStyle} value={form.beamWidth} onChange={e => set("beamWidth", e.target.value)}>
-                      <option value="300">300mm</option>
-                      <option value="350">350mm</option>
-                      <option value="400">400mm</option>
-                      <option value="450">450mm</option>
-                      <option value="500">500mm</option>
-                    </select>
-                  </div>
-                  {form.beamLength && (() => {
-                    const beamSqm = parseFloat(form.beamLength) * (parseFloat(form.beamWidth) / 1000);
-                    return <span style={{ fontSize: 12, color: "#1a56b0", fontWeight: 600 }}>{beamSqm.toFixed(2)} Sq.m × $800 = +${Math.round(beamSqm * 800).toLocaleString("en-AU")} added to pool price</span>;
-                  })()}
-                </>)}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <label style={checkboxRowStyle}>
+                    <input type="checkbox" checked={form.hasBeams} onChange={() => toggle("hasBeams")} />
+                    Non-standard beams (above 180mm) — Side 1
+                  </label>
+                  {form.hasBeams && (<>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 12, color: "#555" }}>Length:</span>
+                      <input style={{ ...inputStyle, width: 90 }} type="number" min="0" step="0.5" value={form.beamLength} onChange={e => set("beamLength", e.target.value)} placeholder="m" />
+                      <span style={{ fontSize: 12, color: "#555" }}>m</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 12, color: "#555" }}>Width:</span>
+                      <select style={selectStyle} value={form.beamWidth} onChange={e => set("beamWidth", e.target.value)}>
+                        <option value="300">300mm</option>
+                        <option value="350">350mm</option>
+                        <option value="400">400mm</option>
+                        <option value="450">450mm</option>
+                        <option value="500">500mm</option>
+                      </select>
+                    </div>
+                    {form.beamLength && (() => {
+                      const beamSqm = parseFloat(form.beamLength) * (parseFloat(form.beamWidth) / 1000);
+                      return <span style={{ fontSize: 12, color: "#1a56b0", fontWeight: 600 }}>{beamSqm.toFixed(2)} Sq.m × $175 = +${Math.round(beamSqm * 175).toLocaleString("en-AU")} added to pool price</span>;
+                    })()}
+                  </>)}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <label style={checkboxRowStyle}>
+                    <input type="checkbox" checked={form.hasBeams2} onChange={() => toggle("hasBeams2")} />
+                    Non-standard beams (above 180mm) — Side 2
+                  </label>
+                  {form.hasBeams2 && (<>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 12, color: "#555" }}>Length:</span>
+                      <input style={{ ...inputStyle, width: 90 }} type="number" min="0" step="0.5" value={form.beamLength2} onChange={e => set("beamLength2", e.target.value)} placeholder="m" />
+                      <span style={{ fontSize: 12, color: "#555" }}>m</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 12, color: "#555" }}>Width:</span>
+                      <select style={selectStyle} value={form.beamWidth2} onChange={e => set("beamWidth2", e.target.value)}>
+                        <option value="300">300mm</option>
+                        <option value="350">350mm</option>
+                        <option value="400">400mm</option>
+                        <option value="450">450mm</option>
+                        <option value="500">500mm</option>
+                      </select>
+                    </div>
+                    {form.beamLength2 && (() => {
+                      const beamSqm2 = parseFloat(form.beamLength2) * (parseFloat(form.beamWidth2) / 1000);
+                      return <span style={{ fontSize: 12, color: "#1a56b0", fontWeight: 600 }}>{beamSqm2.toFixed(2)} Sq.m × $175 = +${Math.round(beamSqm2 * 175).toLocaleString("en-AU")} added to pool price</span>;
+                    })()}
+                  </>)}
+                </div>
               </div>
             </Field>
           </Section>
@@ -1074,14 +1105,30 @@ function EnkipoolsEstimator() {
                 <option value="no">No</option>
               </select>
             </Field>
-            <Field label="Qty Trucks Required">
+            <Field label="Qty Trucks Required" full>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <select style={selectStyle} value={form.truckQty} onChange={e => set("truckQty", e.target.value)}>
-                  <option value="0">0 Trucks (−$2,500 from pool price)</option>
-                  <option value="1">1 Truck (−$1,750 from pool price)</option>
-                  <option value="2">2 Trucks — 1 day (included in pool price)</option>
-                  <option value="3">3 Trucks — 1 day (+$1,750 added to pool price)</option>
+                  <option value="0">0 Trucks (−$2,500/day)</option>
+                  <option value="1">1 Truck (−$1,750/day)</option>
+                  <option value="2">2 Trucks — included/day</option>
+                  <option value="3">3 Trucks (+$1,750/day)</option>
                 </select>
-              </Field>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 12, color: "#555" }}>Days:</span>
+                  <input style={{ ...inputStyle, width: 70 }} type="number" min="1" step="1" value={form.truckDays} onChange={e => set("truckDays", e.target.value)} placeholder="1" />
+                </div>
+                {(() => {
+                  const qty = parseInt(form.truckQty);
+                  const days = parseInt(form.truckDays) || 1;
+                  const ratePerDay = qty === 0 ? -2500 : qty === 1 ? -1750 : qty === 3 ? 1750 : 0;
+                  const total = days === 2
+                    ? (qty === 0 ? 3500 : qty === 1 ? 5000 : qty === 2 ? 6500 : 8000)
+                    : ratePerDay * days;
+                  if (total === 0) return null;
+                  return <span style={{ fontSize: 12, color: total < 0 ? "#27ae60" : "#1a56b0", fontWeight: 600 }}>{days} day{days !== 1 ? "s" : ""}: {total < 0 ? "−" : "+"}${Math.abs(total).toLocaleString("en-AU")}</span>;
+                })()}
+              </div>
+            </Field>
             <Field label="Tracked Loader (Posi or Wheeled Dumper)">
               <label style={checkboxRowStyle}>
                 <input type="checkbox" checked={form.trackedLoader} onChange={() => toggle("trackedLoader")} />
@@ -1523,7 +1570,11 @@ function EnkipoolsEstimator() {
             const pipeOverage = Math.max(0, (parseFloat(form.pipeRunDistance) || 0) - 10);
             const pipeCost = Math.round(pipeOverage * PP.poolVariables.pipeRunPerMeter);
             const truckQtyS = form.truckQty !== undefined && form.truckQty !== "" ? parseInt(form.truckQty) : 2;
-            const truckAdjS = truckQtyS === 0 ? -2500 : truckQtyS === 1 ? -1750 : truckQtyS === 3 ? 1750 : 0;
+            const truckDaysS = parseInt(form.truckDays) || 1;
+            const truckRateS = truckQtyS === 0 ? -2500 : truckQtyS === 1 ? -1750 : truckQtyS === 3 ? 1750 : 0;
+            const truckAdjS = truckDaysS === 2
+              ? (truckQtyS === 0 ? 3500 : truckQtyS === 1 ? 5000 : truckQtyS === 2 ? 6500 : 8000)
+              : truckRateS * truckDaysS;
             const roadClosureRateS = form.roadClosureType === "full" ? 2500 : 1500;
             const roadClosureQtyS = parseInt(form.roadClosureQty) || 1;
             const roadAmt = form.roadClosure ? roadClosureRateS * roadClosureQtyS : 0;
@@ -1532,15 +1583,16 @@ function EnkipoolsEstimator() {
             const externalSurfacesCostS = Math.round(parseFloat(form.externalSurfacesCost) || 0);
             const membraneAreaOnlyCostS = Math.round((parseFloat(form.membraneAreaOnly) || 0) * 90);
             const beamSqmS = form.hasBeams && form.beamLength ? parseFloat(form.beamLength) * (parseFloat(form.beamWidth) / 1000) : 0;
-            const beamCostS = Math.round(beamSqmS * 800);
-            const baseBeforeUplift = Math.round((Math.round(sqm * PP.poolPerSqm) - Math.round(aquaNeonDisc) + Math.round(tile25Surcharge) + swimoutCostS + fullWidthStepsPool + halfWidthStepsPool + soilNotRemovedCreditS + soilClassCostS + trafficMgmtCostS + formworkPoolAdditionS + tilePCSurchargeS2 + pumpUpgradeCostS + pipeCost - filterDiscountS + truckAdjS + externalSurfacesCostS + membraneAreaOnlyCostS + drivewayPoolCostS + roadAmt + beamCostS
+            const beamSqmS2 = form.hasBeams2 && form.beamLength2 ? parseFloat(form.beamLength2) * (parseFloat(form.beamWidth2) / 1000) : 0;
+            const beamCostS = Math.round((beamSqmS + beamSqmS2) * 175);
+            const trackedLoaderAmt = form.trackedLoader ? Math.round(parseFloat(form.trackedLoaderDays || 1) * 1650) : 0;
+            const baseBeforeUplift = Math.round((Math.round(sqm * PP.poolPerSqm) - Math.round(aquaNeonDisc) + Math.round(tile25Surcharge) + swimoutCostS + fullWidthStepsPool + halfWidthStepsPool + soilNotRemovedCreditS + soilClassCostS + trafficMgmtCostS + formworkPoolAdditionS + tilePCSurchargeS2 + pumpUpgradeCostS + pipeCost - filterDiscountS + truckAdjS + externalSurfacesCostS + membraneAreaOnlyCostS + drivewayPoolCostS + roadAmt + beamCostS + trackedLoaderAmt
               - (form.engineeringPlans === "byOthers" ? PP.poolVariables.engineeringByOthersCredit : 0)) * accessMultiplier * shapeMultiplierS * locationMultiplierS);
             const poolBase = Math.round(baseBeforeUplift * (1 + marginUpliftPct));
             const perimSqm = perim * avgDepthTile + sqm;
             const membraneCost = form.hasMembrane ? Math.round(perimSqm * PP.poolVariables.membranePerSqm) : 0;
             const extraBobcat = form.bobcatDays ? parseFloat(form.bobcatDays) * PP.poolVariables.bobcatPerDay : 0;
             const extraTruck = 0; // folded into pool base
-            const trackedLoaderAmt = form.trackedLoader ? Math.round(parseFloat(form.trackedLoaderDays || 1) * 1650) : 0;
             const tippingQtyS = parseInt(form.tippingLoads) || 8;
             const extraTipping = tippingQtyS > 8 ? Math.round((tippingQtyS - 8) * 300) : 0;
             const foundationsAmt = parseFloat(form.foundationsPS) || 0;
@@ -1585,7 +1637,7 @@ function EnkipoolsEstimator() {
               const shapeSurcharge = (form.poolShape === "Freeform" || form.poolShape === "Round") ? Math.round(subtotal * 0.10) : 0;
               return subtotal + shapeSurcharge;
             })();
-            const exGSTTotal = poolBase + membraneCost + extraBobcat + trackedLoaderAmt + extraTipping + soilCredit + foundationsAmt + spaAmt + airBlowerAmt + inFloorAmt + solarAmt + lightingAmt + chlorAmt + autofillerAmt + automationAmt + gasAmt + hpAmt + rockAmt + sitePrepAmt + infinityEdgeAmt;
+            const exGSTTotal = poolBase + membraneCost + extraBobcat + extraTipping + soilCredit + foundationsAmt + spaAmt + airBlowerAmt + inFloorAmt + solarAmt + lightingAmt + chlorAmt + autofillerAmt + automationAmt + gasAmt + hpAmt + rockAmt + sitePrepAmt + infinityEdgeAmt;
             const gst = Math.round(exGSTTotal * 0.10);
             const incGST = exGSTTotal + gst;
             // Profit margin: pool base includes 15% (homeowner), 20% (premium), 25% (builder)
@@ -1626,7 +1678,7 @@ function EnkipoolsEstimator() {
                   <SumRow label="Volume (approx)" value={`${Math.round(sqm * ((dShallow + dDeep) / 2) * 1000).toLocaleString("en-AU")} L`} />
                   <SumRow label="Entry Steps" value={form.hasSteps ? `${form.stepCount} × ${form.stepType === "fullwidth" ? "Full Width Steps" : form.stepType === "halfwidth" ? "Half Width Steps" : "Corner Steps"}` : "None"} />
                   {form.hasSwimout && <SumRow label="Swimout / Ledge" value={`${form.swimoutLength}m × ${form.swimoutWidth}m (${(parseFloat(form.swimoutLength) * parseFloat(form.swimoutWidth)).toFixed(2)} Sq.m)`} />}
-                  {form.hasBeams && beamCostS > 0 && <SumRow label="Beams" value={form.beamLength + "m x " + form.beamWidth + "mm = " + beamSqmS.toFixed(2) + " Sq.m @ $800 = $" + beamCostS.toLocaleString("en-AU") + " (incl. in pool price)"} />}
+                  {form.hasBeams && beamCostS > 0 && <SumRow label="Beams" value={(beamSqmS + beamSqmS2).toFixed(2) + " Sq.m @ $175 = $" + beamCostS.toLocaleString("en-AU") + " (incl. in pool price)"} />}
                   <SumRow label="Pipe Run" value={(form.pipeRunDistance || 10) + "m total" + (pipeCost > 0 ? " - " + pipeOverage + "m over 10m x $450 = $" + pipeCost.toLocaleString("en-AU") + " (incl. in pool)" : " (within included 10m)")} />
                 </SumSection>
 
@@ -1678,8 +1730,8 @@ function EnkipoolsEstimator() {
                 <SumSection title="Excavation">
                   {form.sitePrepDemolition && parseFloat(form.sitePrepDemolitionCost) > 0 && <SumRow label="Site Prep or Demolition" value={`$${parseFloat(form.sitePrepDemolitionCost).toLocaleString("en-AU", { minimumFractionDigits: 2 })}`} />}
                   <SumRow label="Soil Removed" value={form.soilRemoved === "yes" ? "Yes" : "No — credit −$2,400 applied to pool price"} credit={form.soilRemoved === "no"} />
-                  {form.soilRemoved === "yes" && <SumRow label="Trucks" value={truckQtyS + " truck" + (truckQtyS !== 1 ? "s" : "") + (truckAdjS < 0 ? " (−$" + Math.abs(truckAdjS).toLocaleString("en-AU") + " incl. in pool price)" : truckAdjS > 0 ? " (+$" + truckAdjS.toLocaleString("en-AU") + " incl. in pool price)" : " (included)")} credit={truckAdjS < 0} />}
-                  {form.trackedLoader && <SumRow label="Tracked Loader (Posi or Wheeled Dumper)" value={`${form.trackedLoaderDays} day${parseFloat(form.trackedLoaderDays) !== 1 ? "s" : ""} @ $1,650 = $${trackedLoaderAmt.toLocaleString("en-AU")}`} />}
+                  {form.soilRemoved === "yes" && <SumRow label="Trucks" value={truckQtyS + " truck" + (truckQtyS !== 1 ? "s" : "") + " x " + truckDaysS + " day" + (truckDaysS !== 1 ? "s" : "") + (truckAdjS < 0 ? " (−$" + Math.abs(truckAdjS).toLocaleString("en-AU") + " incl. in pool price)" : truckAdjS > 0 ? " (+$" + truckAdjS.toLocaleString("en-AU") + " incl. in pool price)" : " (included)")} credit={truckAdjS < 0} />}
+                  {form.trackedLoader && trackedLoaderAmt > 0 && <SumRow label="Tracked Loader (Posi or Wheeled Dumper)" value={`${form.trackedLoaderDays} day${parseFloat(form.trackedLoaderDays) !== 1 ? "s" : ""} @ $1,650 = $${trackedLoaderAmt.toLocaleString("en-AU")} (incl. in pool price)`} />}
                   <SumRow label="Tipping Loads" value={tippingQtyS + " loads" + (extraTipping > 0 ? " — " + (tippingQtyS - 8) + " extra @ $300 = +$" + extraTipping.toLocaleString("en-AU") : " (within included 8)")} />
                   {form.soilOnSite && parseFloat(form.soilLoadsOnSite) > 0 && <SumRow label="Soil Left on Site" value={`${form.soilLoadsOnSite} loads — credit −$${(parseFloat(form.soilLoadsOnSite) * 180).toLocaleString("en-AU")}`} credit />}
                   {parseFloat(form.rockHardGround) > 0 && <SumRow label="Rock or Hard Ground" value={`PS $${parseFloat(form.rockHardGround).toLocaleString("en-AU")}`} />}
