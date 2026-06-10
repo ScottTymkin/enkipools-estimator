@@ -948,6 +948,8 @@ function EnkipoolsEstimator() {
               </div>
             </Field>
           </Section>
+
+          <Section title="Spa">
             <Field label="Spa">
               <label style={{ ...checkboxRowStyle, opacity: form.proposalType === "poolspa" ? 0.6 : 1 }}>
                 <input type="checkbox" checked={form.hasSpa} disabled={form.proposalType === "poolspa"} onChange={() => toggle("hasSpa")} />
